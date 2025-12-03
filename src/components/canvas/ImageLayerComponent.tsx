@@ -7,6 +7,7 @@ import type { ImageLayer } from '../../types';
 interface ImageLayerComponentProps {
   layer: ImageLayer;
   isDraggable: boolean;
+  isSelected?: boolean;
   onClick: (e: Konva.KonvaEventObject<MouseEvent>) => void;
   onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => void;
   onTransformEnd: (e: Konva.KonvaEventObject<Event>) => void;
@@ -32,6 +33,7 @@ export const ImageLayerComponent: React.FC<ImageLayerComponentProps> = ({
     <Image
       ref={imageRef}
       id={layer.id}
+      name="image-layer"
       image={image}
       x={layer.x}
       y={layer.y}
@@ -41,6 +43,7 @@ export const ImageLayerComponent: React.FC<ImageLayerComponentProps> = ({
       opacity={layer.opacity}
       draggable={isDraggable}
       onClick={onClick}
+      onTap={onClick}
       onDragEnd={onDragEnd}
       onTransformEnd={onTransformEnd}
     />

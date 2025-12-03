@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
 
 interface LovartHeaderProps {
@@ -12,6 +12,11 @@ export const LovartHeader: React.FC<LovartHeaderProps> = ({
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(projectName);
+
+  // 同步外部傳入的 projectName
+  useEffect(() => {
+    setName(projectName);
+  }, [projectName]);
 
   const handleNameSubmit = () => {
     setIsEditing(false);

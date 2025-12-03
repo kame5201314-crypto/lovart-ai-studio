@@ -1,5 +1,5 @@
 // 圖層類型定義
-export type LayerType = 'image' | 'text' | 'mask' | 'drawing' | 'shape' | 'marker';
+export type LayerType = 'image' | 'text' | 'mask' | 'drawing' | 'shape' | 'marker' | 'pen';
 
 // 形狀類型
 export type ShapeType = 'rectangle' | 'circle' | 'triangle' | 'star' | 'arrow' | 'hexagon';
@@ -79,13 +79,15 @@ export interface ImageFilters {
   blur: number;
 }
 
-export type Layer = ImageLayer | TextLayer | MaskLayer | DrawingLayer | ShapeLayer | MarkerLayer;
+export type Layer = ImageLayer | TextLayer | MaskLayer | DrawingLayer | ShapeLayer | MarkerLayer | PenLayer;
 
 // 工具類型
 export type ToolType =
   | 'select'
   | 'move'
   | 'brush'
+  | 'pencil'  // 鉛筆工具 - 粗線自由繪製
+  | 'pen'     // 鋼筆工具 - 貝茲曲線路徑
   | 'eraser'
   | 'text'
   | 'rectangle'
@@ -98,6 +100,29 @@ export type ToolType =
   | 'mask'
   | 'inpaint'
   | 'marker'; // 標記工具
+
+// 鋼筆路徑控制點
+export interface PenPoint {
+  x: number;
+  y: number;
+  handleIn?: { x: number; y: number };  // 入控制柄
+  handleOut?: { x: number; y: number }; // 出控制柄
+}
+
+// 鋼筆路徑
+export interface PenPath {
+  points: PenPoint[];
+  stroke: string;
+  strokeWidth: number;
+  closed: boolean;
+  fill?: string;
+}
+
+// 鋼筆圖層
+export interface PenLayer extends BaseLayer {
+  type: 'pen';
+  paths: PenPath[];
+}
 
 // AI 模型定義
 export type AIModel =

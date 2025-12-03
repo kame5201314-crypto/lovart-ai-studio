@@ -20,6 +20,7 @@ export const TopBar: React.FC = () => {
     canvasState,
     layers,
     isLoading,
+    setTool,
   } = useCanvasStore();
 
   const [isExporting, setIsExporting] = useState(false);
@@ -113,13 +114,14 @@ export const TopBar: React.FC = () => {
           reader.onload = (e) => {
             const src = e.target?.result as string;
             addImageLayer(src, file.name);
+            setTool('select'); // 確保添加圖片後工具設為選擇模式
           };
           reader.readAsDataURL(file);
         });
       }
     };
     input.click();
-  }, [addImageLayer]);
+  }, [addImageLayer, setTool]);
 
   return (
     <div className="h-12 bg-gray-900 border-b border-gray-700 flex items-center justify-between px-4">

@@ -8,6 +8,9 @@ import type {
   DrawingLayer,
   ShapeLayer,
   MarkerLayer,
+  PenLayer,
+  PenPath,
+  PenPoint,
   ShapeType,
   ToolType,
   AIModel,
@@ -49,6 +52,9 @@ interface CanvasStore {
   addShapeLayer: (shapeType: ShapeType, x: number, y: number, width: number, height: number) => string;
   addMarkerLayer: (x: number, y: number) => string;
   resetMarkerCounter: () => void;
+  addPenLayer: () => string;
+  addPathToPen: (layerId: string, path: PenPath) => void;
+  updatePenPath: (layerId: string, pathIndex: number, path: PenPath) => void;
   setCanvasSize: (width: number, height: number) => void;
   setZoom: (zoom: number) => void;
   setPan: (x: number, y: number) => void;
@@ -316,6 +322,46 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   resetMarkerCounter: () => {
     set({ markerCounter: 0 });
+  },
+
+  addPenLayer: () => {
+    return get().addLayer({
+      type: 'pen',
+      name: '鋼筆路徑',
+      visible: true,
+      locked: false,
+      opacity: 1,
+      x: 0,
+      y: 0,
+      width: get().canvasState.width,
+      height: get().canvasState.height,
+      rotation: 0,
+      paths: [],
+    } as Omit<PenLayer, 'id' | 'zIndex'>);
+  },
+
+  addPathToPen: (layerId, path) => {
+    set((state) => ({
+      layers: state.layers.map((layer) =>
+        layer.id === layerId && layer.type === 'pen'
+          ? { ...layer, paths: [...(layer as PenLayer).paths, path] }
+          : layer
+      ),
+    }));
+  },
+
+  updatePenPath: (layerId, pathIndex, path) => {
+    set((state) => ({
+      layers: state.layers.map((layer) => {
+        if (layer.id === layerId && layer.type === 'pen') {
+          const penLayer = layer as PenLayer;
+          const newPaths = [...penLayer.paths];
+          newPaths[pathIndex] = path;
+          return { ...layer, paths: newPaths };
+        }
+        return layer;
+      }),
+    }));
   },
 
   setCanvasSize: (width, height) => {

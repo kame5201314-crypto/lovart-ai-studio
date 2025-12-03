@@ -1,9 +1,6 @@
 import React, { useState, useRef } from 'react';
 import {
   Plus,
-  History,
-  Share2,
-  Bookmark,
   Paperclip,
   AtSign,
   Lightbulb,
@@ -12,11 +9,11 @@ import {
   Smile,
   Send,
   ChevronDown,
-  Search,
   Sparkles,
   Camera,
 } from 'lucide-react';
 import { useCanvasStore } from '../../store/canvasStore';
+import { ChatToolbar } from '../ui/ChatToolbar';
 import type { AIModel } from '../../types';
 
 // 範例卡片數據
@@ -60,16 +57,44 @@ const aiModels: { id: AIModel; name: string; icon: string }[] = [
   { id: 'flux-schnell', name: 'Flux Schnell', icon: '⚡' },
 ];
 
+// 對話歷史項目
+interface ChatHistoryItem {
+  id: string;
+  title: string;
+  preview: string;
+  timestamp: Date;
+}
+
+// 生成的文件項目
+interface GeneratedFile {
+  id: string;
+  name: string;
+  thumbnail: string;
+  type: 'image' | 'video';
+}
+
 interface LovartSidebarProps {
   onSendMessage?: (message: string, model: string) => void;
   onSelectExample?: (example: typeof exampleCards[0]) => void;
   onOpenStudio?: () => void;
+  chatHistory?: ChatHistoryItem[];
+  generatedFiles?: GeneratedFile[];
+  onNewChat?: () => void;
+  onSelectHistory?: (chatId: string) => void;
+  onShare?: () => void;
+  onSelectFile?: (fileId: string) => void;
 }
 
 export const LovartSidebar: React.FC<LovartSidebarProps> = ({
   onSendMessage,
   onSelectExample,
   onOpenStudio,
+  chatHistory = [],
+  generatedFiles = [],
+  onNewChat,
+  onSelectHistory,
+  onShare,
+  onSelectFile,
 }) => {
   const { selectedModel, setSelectedModel } = useCanvasStore();
   const [message, setMessage] = useState('');
@@ -96,22 +121,14 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
     <div className="w-[360px] h-full flex flex-col bg-white border-l border-gray-200 relative">
       {/* 頂部工具列 */}
       <div className="flex items-center justify-end gap-1 p-3 border-b border-gray-100 relative">
-        <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-500" title="新建對話">
-          <Plus size={18} />
-        </button>
-        <button
-          onClick={() => setShowHistory(!showHistory)}
-          className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"
-          title="歷史對話"
-        >
-          <History size={18} />
-        </button>
-        <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-500" title="分享">
-          <Share2 size={18} />
-        </button>
-        <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-500" title="收藏">
-          <Bookmark size={18} />
-        </button>
+        <ChatToolbar
+          onNewChat={onNewChat}
+          onSelectHistory={onSelectHistory}
+          onShare={onShare}
+          onSelectFile={onSelectFile}
+          chatHistory={chatHistory}
+          generatedFiles={generatedFiles}
+        />
         <button
           onClick={onOpenStudio}
           className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"
@@ -123,24 +140,6 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
           <Sparkles size={18} />
         </button>
       </div>
-
-      {/* 歷史對話彈出層 */}
-      {showHistory && (
-        <div className="absolute right-0 top-12 w-64 bg-white rounded-lg shadow-lg border border-gray-200 p-3 z-50">
-          <div className="text-sm font-medium text-gray-700 mb-2">歷史對話</div>
-          <div className="relative mb-2">
-            <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="請輸入搜尋關鍵字"
-              className="w-full pl-7 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400"
-            />
-          </div>
-          <button className="w-full text-left px-2 py-1.5 text-sm text-gray-600 hover:bg-gray-50 rounded">
-            新對話
-          </button>
-        </div>
-      )}
 
       {/* 主要內容區 */}
       <div className="flex-1 overflow-y-auto p-4">

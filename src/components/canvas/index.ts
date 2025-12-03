@@ -3,3 +3,6 @@ export { ImageLayerComponent } from './ImageLayerComponent';
 export { TextLayerComponent } from './TextLayerComponent';
 export { MaskLayerComponent } from './MaskLayerComponent';
 export { DrawingLayerComponent } from './DrawingLayerComponent';
+export { PenLayerComponent } from './PenLayerComponent';
+export { ImageGeneratorBlock } from './ImageGeneratorBlock';
+export { VideoGeneratorBlock } from './VideoGeneratorBlock';

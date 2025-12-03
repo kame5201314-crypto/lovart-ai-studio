@@ -8,7 +8,9 @@ import { MaskLayerComponent } from './MaskLayerComponent';
 import { DrawingLayerComponent } from './DrawingLayerComponent';
 import { ShapeLayerComponent } from './ShapeLayerComponent';
 import { MarkerLayerComponent } from './MarkerLayerComponent';
-import type { Layer as LayerType, DrawingLine, ShapeType, ShapeLayer, MarkerLayer } from '../../types';
+import { PenLayerComponent } from './PenLayerComponent';
+import { ImageToolbar, ImageAIToolsPanel, AIToolsTrigger } from '../ui';
+import type { Layer as LayerType, DrawingLine, ShapeType, ShapeLayer, MarkerLayer, PenLayer, PenPath, PenPoint } from '../../types';
 
 // 框選狀態介面
 interface SelectionBox {
@@ -52,6 +54,9 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
     addLineToDrawing,
     addShapeLayer,
     addMarkerLayer,
+    addPenLayer,
+    addPathToPen,
+    updatePenPath,
     setZoom,
     setPan,
     saveToHistory,
@@ -70,6 +75,19 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
   const [shapeStart, setShapeStart] = useState({ x: 0, y: 0 });
   const [currentShapeType, setCurrentShapeType] = useState<ShapeType | null>(null);
   const [tempShape, setTempShape] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+
+  // 鋼筆工具狀態
+  const [penPoints, setPenPoints] = useState<PenPoint[]>([]);
+  const [activePenLayerId, setActivePenLayerId] = useState<string | null>(null);
+  const [isDrawingPen, setIsDrawingPen] = useState(false);
+
+  // AI 工具面板狀態
+  const [showAIToolsPanel, setShowAIToolsPanel] = useState(false);
+
+  // 當選中圖層變化時，關閉 AI 工具面板
+  useEffect(() => {
+    setShowAIToolsPanel(false);
+  }, [selectedLayerId]);
 
   const [initialized, setInitialized] = useState(false);
 
@@ -97,14 +115,27 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
     const stage = stageRef.current;
     if (!transformer || !stage) return;
 
-    if (selectedLayerId && currentTool === 'select') {
-      const selectedNode = stage.findOne(`#${selectedLayerId}`);
-      if (selectedNode) {
-        transformer.nodes([selectedNode]);
-        transformer.getLayer()?.batchDraw();
+    const attachTransformer = () => {
+      if (selectedLayerId && currentTool === 'select') {
+        const selectedNode = stage.findOne(`#${selectedLayerId}`);
+        if (selectedNode) {
+          transformer.nodes([selectedNode]);
+          transformer.getLayer()?.batchDraw();
+          return true;
+        }
+        return false;
+      } else {
+        transformer.nodes([]);
+        return true;
       }
-    } else {
-      transformer.nodes([]);
+    };
+
+    // 嘗試附加 transformer，如果找不到節點，延遲重試
+    if (!attachTransformer()) {
+      const timer = setTimeout(() => {
+        attachTransformer();
+      }, 100);
+      return () => clearTimeout(timer);
     }
   }, [selectedLayerId, currentTool, layers]);
 
@@ -177,10 +208,36 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
         return;
       }
 
-      // Escape: 取消選擇
+      // Escape: 取消選擇 / 取消鋼筆繪製
       if (e.key === 'Escape') {
         e.preventDefault();
+        if (currentTool === 'pen' && penPoints.length > 0) {
+          // 取消鋼筆繪製
+          setPenPoints([]);
+          setIsDrawingPen(false);
+          return;
+        }
         selectLayer(null);
+        return;
+      }
+
+      // Enter: 完成鋼筆路徑
+      if (e.key === 'Enter' && currentTool === 'pen' && penPoints.length >= 2) {
+        e.preventDefault();
+        // 將當前路徑保存到圖層
+        if (activePenLayerId) {
+          const newPath: PenPath = {
+            points: penPoints,
+            stroke: brushColor,
+            strokeWidth: 2,
+            closed: false,
+          };
+          addPathToPen(activePenLayerId, newPath);
+          saveToHistory('完成鋼筆路徑');
+        }
+        // 清空當前繪製狀態，準備繪製新路徑
+        setPenPoints([]);
+        setIsDrawingPen(false);
         return;
       }
 
@@ -216,7 +273,7 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedLayerId, layers, copyLayer, cutLayer, pasteLayer, deleteSelectedLayer, duplicateLayer, selectAllLayers, undo, redo, selectLayer, updateLayer]);
+  }, [selectedLayerId, layers, copyLayer, cutLayer, pasteLayer, deleteSelectedLayer, duplicateLayer, selectAllLayers, undo, redo, selectLayer, updateLayer, currentTool, penPoints, activePenLayerId, brushColor, addPathToPen, saveToHistory]);
 
   const handleStageClick = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -328,7 +385,46 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
         return;
       }
 
-      // 繪圖模式
+      // 鉛筆工具 - 粗線自由繪製
+      if (currentTool === 'pencil') {
+        setIsDrawing(true);
+        const stage = e.target.getStage();
+        const pos = stage?.getPointerPosition();
+        if (pos && stage) {
+          const transform = stage.getAbsoluteTransform().copy().invert();
+          const canvasPos = transform.point(pos);
+          setCurrentLine([canvasPos.x, canvasPos.y]);
+        }
+        return;
+      }
+
+      // 鋼筆工具 - 點擊添加控制點
+      if (currentTool === 'pen') {
+        const stage = e.target.getStage();
+        const pos = stage?.getPointerPosition();
+        if (pos && stage) {
+          const transform = stage.getAbsoluteTransform().copy().invert();
+          const canvasPos = transform.point(pos);
+
+          // 添加新的控制點
+          const newPoint: PenPoint = {
+            x: canvasPos.x,
+            y: canvasPos.y,
+          };
+
+          setPenPoints((prev) => [...prev, newPoint]);
+          setIsDrawingPen(true);
+
+          // 如果沒有活動的鋼筆圖層，創建一個
+          if (!activePenLayerId) {
+            const newLayerId = addPenLayer();
+            setActivePenLayerId(newLayerId);
+          }
+        }
+        return;
+      }
+
+      // 繪圖模式（原有的 brush 工具）
       if (currentTool !== 'brush' && currentTool !== 'mask') return;
       setIsDrawing(true);
       const stage = e.target.getStage();
@@ -340,7 +436,7 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
         setCurrentLine([canvasPos.x, canvasPos.y]);
       }
     },
-    [currentTool]
+    [currentTool, activePenLayerId, addPenLayer]
   );
 
   const handleMouseMove = useCallback(
@@ -385,7 +481,19 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
         return;
       }
 
-      // 繪圖模式
+      // 鉛筆工具繪圖模式
+      if (isDrawing && currentTool === 'pencil') {
+        const stage = e.target.getStage();
+        const pos = stage?.getPointerPosition();
+        if (pos && stage) {
+          const transform = stage.getAbsoluteTransform().copy().invert();
+          const canvasPos = transform.point(pos);
+          setCurrentLine((prev) => [...prev, canvasPos.x, canvasPos.y]);
+        }
+        return;
+      }
+
+      // 繪圖模式（brush/mask）
       if (!isDrawing) return;
       const stage = e.target.getStage();
       const pos = stage?.getPointerPosition();
@@ -469,7 +577,38 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
       return;
     }
 
-    // 停止繪圖
+    // 鉛筆工具完成繪製
+    if (isDrawing && currentTool === 'pencil') {
+      setIsDrawing(false);
+      if (currentLine.length > 2) {
+        // 找到或創建繪圖圖層
+        let targetLayer = layers.find(
+          (l) => l.id === selectedLayerId && l.type === 'drawing'
+        );
+        if (!targetLayer) {
+          // 如果沒有選中的繪圖圖層，創建一個新的
+          const { addDrawingLayer } = useCanvasStore.getState();
+          const newLayerId = addDrawingLayer();
+          targetLayer = layers.find((l) => l.id === newLayerId);
+        }
+        if (targetLayer) {
+          const line: DrawingLine = {
+            points: currentLine,
+            stroke: brushColor,
+            strokeWidth: brushSize * 3, // 鉛筆線條比較粗
+            tension: 0.3,
+            lineCap: 'round',
+            lineJoin: 'round',
+          };
+          addLineToDrawing(targetLayer.id, line);
+          saveToHistory('鉛筆繪圖');
+        }
+      }
+      setCurrentLine([]);
+      return;
+    }
+
+    // 停止繪圖（brush/mask）
     if (!isDrawing) return;
     setIsDrawing(false);
     const targetLayer = layers.find(
@@ -569,6 +708,15 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
             onTransformEnd={(e) => handleTransformEnd(layer.id, e)}
           />
         );
+      case 'pen':
+        return (
+          <PenLayerComponent
+            key={layer.id}
+            layer={layer as PenLayer}
+            isSelected={layer.id === selectedLayerId}
+            showControlPoints={currentTool === 'pen' && layer.id === activePenLayerId}
+          />
+        );
       default:
         return null;
     }
@@ -583,6 +731,8 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
         return isPanning ? 'grabbing' : 'grab';
       case 'brush':
       case 'mask':
+      case 'pencil':
+      case 'pen':
         return 'crosshair';
       case 'text':
         return 'text';
@@ -626,7 +776,8 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
             listening={true}
           />
           {sortedLayers.map(renderLayer)}
-          {isDrawing && currentLine.length > 2 && (
+          {/* 繪圖預覽（brush/mask） */}
+          {isDrawing && currentLine.length > 2 && currentTool !== 'pencil' && (
             <Line
               points={currentLine}
               stroke={currentTool === 'mask' ? '#ffffff' : brushColor}
@@ -635,6 +786,43 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
               lineCap="round"
               lineJoin="round"
             />
+          )}
+          {/* 鉛筆預覽 */}
+          {isDrawing && currentLine.length > 2 && currentTool === 'pencil' && (
+            <Line
+              points={currentLine}
+              stroke={brushColor}
+              strokeWidth={brushSize * 3}
+              tension={0.3}
+              lineCap="round"
+              lineJoin="round"
+            />
+          )}
+          {/* 鋼筆路徑預覽 */}
+          {penPoints.length > 0 && currentTool === 'pen' && (
+            <>
+              {/* 路徑線條 */}
+              <Line
+                points={penPoints.flatMap(p => [p.x, p.y])}
+                stroke={brushColor}
+                strokeWidth={2}
+                tension={0.3}
+                lineCap="round"
+                lineJoin="round"
+              />
+              {/* 控制點 */}
+              {penPoints.map((point, index) => (
+                <Circle
+                  key={index}
+                  x={point.x}
+                  y={point.y}
+                  radius={6}
+                  fill="#ffffff"
+                  stroke="#3b82f6"
+                  strokeWidth={2}
+                />
+              ))}
+            </>
           )}
           {/* 框選矩形 */}
           {selectionBox.visible && (
@@ -741,11 +929,119 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
           />
         </Layer>
       </Stage>
-      {/* 選取後的浮動工具列 */}
+      {/* 選取圖片後的 AI 工具列 */}
       {selectedLayerId && currentTool === 'select' && (() => {
         const selectedLayer = layers.find(l => l.id === selectedLayerId);
         if (!selectedLayer) return null;
 
+        // 如果選中的是圖片圖層，顯示 AI 圖片工具
+        if (selectedLayer.type === 'image') {
+          return (
+            <>
+              {/* 頂部 AI 工具列 */}
+              <div
+                className="absolute z-50"
+                style={{
+                  top: '12px',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                }}
+              >
+                <ImageToolbar
+                  onUpscale={() => console.log('AI 圖像放大')}
+                  onRemoveBackground={() => console.log('AI 背景移除')}
+                  onMockup={() => console.log('Mockup')}
+                  onErase={() => console.log('擦除')}
+                  onEditElements={() => console.log('編輯元素')}
+                  onEditText={() => console.log('編輯文字')}
+                  onExpand={() => console.log('擴展')}
+                  onDownload={() => {
+                    // 下載選中的圖片
+                    const link = document.createElement('a');
+                    link.href = (selectedLayer as any).imageUrl;
+                    link.download = `${selectedLayer.name || 'image'}.png`;
+                    link.click();
+                  }}
+                />
+              </div>
+
+              {/* 右下角 AI 工具觸發按鈕 */}
+              <div
+                className="absolute z-50"
+                style={{
+                  bottom: '80px',
+                  right: '16px',
+                }}
+              >
+                <AIToolsTrigger onClick={() => setShowAIToolsPanel(!showAIToolsPanel)} />
+              </div>
+
+              {/* AI 工具浮動面板 */}
+              {showAIToolsPanel && (
+                <div
+                  className="absolute z-50"
+                  style={{
+                    bottom: '120px',
+                    right: '16px',
+                  }}
+                >
+                  <ImageAIToolsPanel
+                    onImageChat={() => {
+                      console.log('圖片交流');
+                      setShowAIToolsPanel(false);
+                    }}
+                    onExtractText={() => {
+                      console.log('提取文字');
+                      setShowAIToolsPanel(false);
+                    }}
+                    onTranslate={(lang) => {
+                      console.log('翻譯成:', lang);
+                      setShowAIToolsPanel(false);
+                    }}
+                    onSaveToMemo={() => {
+                      console.log('儲存到備忘錄');
+                      setShowAIToolsPanel(false);
+                    }}
+                    onRemoveBackground={() => {
+                      console.log('AI 背景移除器');
+                      setShowAIToolsPanel(false);
+                    }}
+                    onRemoveBrushArea={() => {
+                      console.log('移除刷選區域');
+                      setShowAIToolsPanel(false);
+                    }}
+                    onRemoveObject={() => {
+                      console.log('移除物件');
+                      setShowAIToolsPanel(false);
+                    }}
+                    onImageGenerator={() => {
+                      console.log('AI 圖像生成器');
+                      setShowAIToolsPanel(false);
+                    }}
+                    onImageToAnimation={() => {
+                      console.log('AI 圖生動畫');
+                      setShowAIToolsPanel(false);
+                    }}
+                    onRemoveText={() => {
+                      console.log('移除文字');
+                      setShowAIToolsPanel(false);
+                    }}
+                    onChangeBackground={() => {
+                      console.log('更換背景');
+                      setShowAIToolsPanel(false);
+                    }}
+                    onUpscale={() => {
+                      console.log('AI 圖像放大');
+                      setShowAIToolsPanel(false);
+                    }}
+                  />
+                </div>
+              )}
+            </>
+          );
+        }
+
+        // 非圖片圖層，顯示通用工具列
         return (
           <div
             className="absolute bg-white rounded-lg shadow-lg border border-gray-200 px-3 py-2 flex items-center gap-2 z-50"

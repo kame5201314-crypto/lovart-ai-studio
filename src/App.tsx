@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { LovartToolbar, LovartSidebar, LovartHeader } from './components/lovart';
-import { SmartCanvas } from './components/canvas';
-import { ContextMenu, getImageContextMenuItems } from './components/ui';
+import { SmartCanvas, ImageGeneratorBlock, VideoGeneratorBlock } from './components/canvas';
+import { ContextMenu, getImageContextMenuItems, OnboardingTutorial, NanoBananaProTip } from './components/ui';
 import { StudioPanel } from './components/studio';
 import { useCanvasStore } from './store/canvasStore';
 import {
@@ -38,7 +38,43 @@ function App() {
     visible: false,
   });
   const [showStudioPanel, setShowStudioPanel] = useState(false);
-  const [projectName, setProjectName] = useState('未命名專案');
+  const [projectName, setProjectName] = useState('未命名');
+  const [showTutorial, setShowTutorial] = useState(true);
+  const [showNanoBananaTip, setShowNanoBananaTip] = useState(false);
+  const [showImageGenerator, setShowImageGenerator] = useState(false);
+  const [showVideoGenerator, setShowVideoGenerator] = useState(false);
+
+  // 對話歷史
+  const [chatHistory, setChatHistory] = useState([
+    {
+      id: '1',
+      title: 'I NEED A STORY BOARD F...',
+      preview: 'C',
+      timestamp: new Date(),
+    },
+  ]);
+
+  // 生成的文件列表
+  const [generatedFiles, setGeneratedFiles] = useState([
+    {
+      id: '1',
+      name: 'Storyboard_Frame_5_Hostel',
+      thumbnail: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=100&h=100&fit=crop',
+      type: 'image' as const,
+    },
+    {
+      id: '2',
+      name: 'Storyboard_Frame_3_Walking',
+      thumbnail: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=100&h=100&fit=crop',
+      type: 'image' as const,
+    },
+    {
+      id: '3',
+      name: 'Storyboard_Frame_2_Boombox',
+      thumbnail: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=100&h=100&fit=crop',
+      type: 'image' as const,
+    },
+  ]);
 
   // 獲取當前選中的圖層
   const selectedLayer = layers.find((l) => l.id === selectedLayerId);
@@ -163,16 +199,56 @@ function App() {
   };
 
   const contextMenuItems = getImageContextMenuItems({
-    onAIEdit: () => {
+    onCopy: () => {
+      // TODO: 實現複製功能
       closeContextMenu();
     },
-    onAIOutpaint: () => {
+    onPaste: () => {
+      // TODO: 實現粘貼功能
       closeContextMenu();
     },
-    onAIUpscale: () => handleAIUpscale(2),
-    onRemoveBackground: handleRemoveBackground,
-    onDownload: handleDownload,
+    onMoveUp: () => {
+      // TODO: 實現上移一層
+      closeContextMenu();
+    },
+    onMoveDown: () => {
+      // TODO: 實現下移一層
+      closeContextMenu();
+    },
+    onMoveToTop: () => {
+      // TODO: 實現移動至頂層
+      closeContextMenu();
+    },
+    onMoveToBottom: () => {
+      // TODO: 實現移動至底層
+      closeContextMenu();
+    },
+    onSendToChat: () => {
+      // TODO: 實現發送至對話
+      closeContextMenu();
+    },
+    onCreateGroup: () => {
+      // TODO: 實現創建編組
+      closeContextMenu();
+    },
+    onToggleVisibility: () => {
+      // TODO: 實現顯示/隱藏
+      closeContextMenu();
+    },
+    onToggleLock: () => {
+      // TODO: 實現鎖定/解鎖
+      closeContextMenu();
+    },
+    onExportPNG: () => {
+      handleDownload();
+      closeContextMenu();
+    },
+    onExportJPG: () => {
+      handleDownload();
+      closeContextMenu();
+    },
     onDelete: () => {
+      // TODO: 實現刪除
       closeContextMenu();
     },
     isLocked: selectedLayer?.locked,
@@ -206,6 +282,7 @@ function App() {
             }
             addImageLayer(src, file.name, width, height);
             saveToHistory('上傳圖片');
+            setTool('select'); // 確保上傳後工具設為選擇模式
           };
           img.src = src;
         };
@@ -323,6 +400,12 @@ function App() {
         case 'p':
           setTool('brush');
           break;
+        case 'a':
+          setShowImageGenerator(true);
+          break;
+        case 'escape':
+          setShowImageGenerator(false);
+          break;
       }
     };
 
@@ -370,12 +453,15 @@ function App() {
                 addTextLayer('雙擊編輯文字');
                 break;
               case 'pencil':
-              case 'pen':
-                console.log('設定工具為: brush');
-                setTool('brush');
-                if (currentTool !== 'brush') {
+                console.log('設定工具為: pencil (鉛筆)');
+                setTool('pencil');
+                if (currentTool !== 'pencil' && currentTool !== 'brush') {
                   addDrawingLayer();
                 }
+                break;
+              case 'pen':
+                console.log('設定工具為: pen (鋼筆)');
+                setTool('pen');
                 break;
               case 'rectangle':
                 console.log('設定工具為: rectangle');
@@ -413,13 +499,76 @@ function App() {
           onUploadImage={handleUploadImage}
           onUploadVideo={handleUploadVideo}
           onOpenImageGenerator={() => {
-            // 可以打開生成器對話框
+            setShowImageGenerator(true);
+            setShowVideoGenerator(false);
+          }}
+          onOpenVideoGenerator={() => {
+            setShowVideoGenerator(true);
+            setShowImageGenerator(false);
           }}
         />
 
         {/* 中央畫布區 */}
         <div className="flex-1 relative" onContextMenu={handleContextMenu}>
           <SmartCanvas className="w-full h-full" />
+
+          {/* 圖像生成器 */}
+          {showImageGenerator && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="pointer-events-auto">
+                <ImageGeneratorBlock
+                  isGenerating={isLoading}
+                  onGenerate={async (prompt, model, width, height, referenceImage) => {
+                    setLoading(true, '正在生成圖片...');
+                    try {
+                      const results = await generateImage({
+                        prompt,
+                        model,
+                        width,
+                        height,
+                        numOutputs: 1,
+                      });
+                      if (results[0]) {
+                        addImageLayer(results[0], 'AI 生成圖片', width / 2, height / 2);
+                        saveToHistory('AI 生成圖片');
+                        setShowImageGenerator(false);
+                      }
+                    } catch (error) {
+                      console.error('生成失敗:', error);
+                      alert('生成失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  onClose={() => setShowImageGenerator(false)}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* 影片生成器 */}
+          {showVideoGenerator && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="pointer-events-auto">
+                <VideoGeneratorBlock
+                  isGenerating={isLoading}
+                  onGenerate={async (prompt, model, ratio, duration, startFrame, endFrame) => {
+                    setLoading(true, '正在生成影片...');
+                    try {
+                      // TODO: 實現影片生成 API
+                      alert('影片生成功能開發中...');
+                    } catch (error) {
+                      console.error('生成失敗:', error);
+                      alert('生成失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  onClose={() => setShowVideoGenerator(false)}
+                />
+              </div>
+            </div>
+          )}
 
           {/* 載入指示器 */}
           {isLoading && (
@@ -451,6 +600,31 @@ function App() {
             handleSendMessage(example.description);
           }}
           onOpenStudio={() => setShowStudioPanel(true)}
+          chatHistory={chatHistory}
+          generatedFiles={generatedFiles}
+          onNewChat={() => {
+            console.log('新建對話');
+            // 清空當前對話並開始新對話
+          }}
+          onSelectHistory={(chatId) => {
+            console.log('選擇歷史對話:', chatId);
+            // 載入歷史對話
+          }}
+          onShare={() => {
+            console.log('分享對話');
+            // 複製分享連結到剪貼板
+            navigator.clipboard.writeText(window.location.href);
+            alert('分享連結已複製到剪貼板！');
+          }}
+          onSelectFile={(fileId) => {
+            console.log('選擇文件:', fileId);
+            // 在畫布中顯示選擇的文件
+            const file = generatedFiles.find((f) => f.id === fileId);
+            if (file) {
+              addImageLayer(file.thumbnail, file.name);
+              saveToHistory('添加生成的文件');
+            }
+          }}
         />
       </div>
 
@@ -460,6 +634,19 @@ function App() {
         onClose={() => setShowStudioPanel(false)}
         onImageGenerated={handleImageGenerated}
       />
+
+      {/* 新手引導教學 */}
+      {showTutorial && (
+        <OnboardingTutorial onComplete={() => {
+          setShowTutorial(false);
+          setShowNanoBananaTip(true);
+        }} />
+      )}
+
+      {/* Nano Banana Pro 提示 */}
+      {showNanoBananaTip && (
+        <NanoBananaProTip onClose={() => setShowNanoBananaTip(false)} />
+      )}
     </div>
   );
 }
