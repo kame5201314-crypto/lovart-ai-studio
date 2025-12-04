@@ -12,7 +12,8 @@ import {
   aiTextReplace,
   generateImage,
 } from './services/aiService';
-import type { ImageLayer } from './types';
+import type {
+  AIModel, ImageLayer } from './types';
 
 function App() {
   const {
