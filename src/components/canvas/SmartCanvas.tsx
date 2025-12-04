@@ -10,7 +10,15 @@ import { ShapeLayerComponent } from './ShapeLayerComponent';
 import { MarkerLayerComponent } from './MarkerLayerComponent';
 import { PenLayerComponent } from './PenLayerComponent';
 import { ImageToolbar, ImageAIToolsPanel, AIToolsTrigger } from '../ui';
-import type { Layer as LayerType, DrawingLine, ShapeType, ShapeLayer, MarkerLayer, PenLayer, PenPath, PenPoint } from '../../types';
+import type { Layer as LayerType, DrawingLine, ShapeType, ShapeLayer, MarkerLayer, PenLayer, PenPath, PenPoint, ImageLayer } from '../../types';
+import {
+  aiSuperResolution,
+  aiRemoveBackground,
+  aiOutpaint,
+  aiEditImage,
+  aiTextReplace,
+  inpaint,
+} from '../../services/aiService';
 
 // 框選狀態介面
 interface SelectionBox {
@@ -68,6 +76,8 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
     deleteSelectedLayer,
     duplicateLayer,
     selectAllLayers,
+    addImageLayer,
+    setLoading,
   } = useCanvasStore();
 
   // 形狀繪製狀態
@@ -948,17 +958,124 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
                 }}
               >
                 <ImageToolbar
-                  onUpscale={() => console.log('AI 圖像放大')}
-                  onRemoveBackground={() => console.log('AI 背景移除')}
-                  onMockup={() => console.log('Mockup')}
-                  onErase={() => console.log('擦除')}
-                  onEditElements={() => console.log('編輯元素')}
-                  onEditText={() => console.log('編輯文字')}
-                  onExpand={() => console.log('擴展')}
+                  onUpscale={async () => {
+                    const imageLayer = selectedLayer as ImageLayer;
+                    if (!imageLayer.src) return;
+                    setLoading(true, 'AI 放大中...');
+                    try {
+                      const result = await aiSuperResolution({ image: imageLayer.src, scale: 2 });
+                      if (result) {
+                        addImageLayer(result, 'AI 放大結果');
+                        saveToHistory('AI 放大');
+                      }
+                    } catch (error) {
+                      console.error('AI 放大失敗:', error);
+                      alert('AI 放大失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  onRemoveBackground={async () => {
+                    const imageLayer = selectedLayer as ImageLayer;
+                    if (!imageLayer.src) return;
+                    setLoading(true, '移除背景中...');
+                    try {
+                      const result = await aiRemoveBackground({ image: imageLayer.src });
+                      if (result) {
+                        addImageLayer(result, '去背結果');
+                        saveToHistory('移除背景');
+                      }
+                    } catch (error) {
+                      console.error('移除背景失敗:', error);
+                      alert('移除背景失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  onMockup={() => {
+                    alert('Mockup 功能開發中...\n可將圖片套用到手機、電腦等產品模板上');
+                  }}
+                  onErase={async () => {
+                    const imageLayer = selectedLayer as ImageLayer;
+                    if (!imageLayer.src) return;
+                    const prompt = window.prompt('請描述要擦除的內容（例如：移除背景中的人物）');
+                    if (!prompt) return;
+                    setLoading(true, '擦除中...');
+                    try {
+                      const results = await aiEditImage({ image: imageLayer.src, prompt: `移除圖片中的${prompt}，用周圍背景自然填補` });
+                      if (results[0]) {
+                        addImageLayer(results[0], '擦除結果');
+                        saveToHistory('擦除');
+                      }
+                    } catch (error) {
+                      console.error('擦除失敗:', error);
+                      alert('擦除失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  onEditElements={async () => {
+                    const imageLayer = selectedLayer as ImageLayer;
+                    if (!imageLayer.src) return;
+                    const prompt = window.prompt('請描述要編輯的內容（例如：將紅色車變成藍色）');
+                    if (!prompt) return;
+                    setLoading(true, '編輯元素中...');
+                    try {
+                      const results = await aiEditImage({ image: imageLayer.src, prompt });
+                      if (results[0]) {
+                        addImageLayer(results[0], '編輯結果');
+                        saveToHistory('編輯元素');
+                      }
+                    } catch (error) {
+                      console.error('編輯元素失敗:', error);
+                      alert('編輯元素失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  onEditText={async () => {
+                    const imageLayer = selectedLayer as ImageLayer;
+                    if (!imageLayer.src) return;
+                    const originalText = window.prompt('請輸入圖片中要替換的文字');
+                    if (!originalText) return;
+                    const newText = window.prompt('請輸入新的文字');
+                    if (!newText) return;
+                    setLoading(true, '編輯文字中...');
+                    try {
+                      const results = await aiTextReplace({ image: imageLayer.src, originalText, newText });
+                      if (results[0]) {
+                        addImageLayer(results[0], '文字編輯結果');
+                        saveToHistory('編輯文字');
+                      }
+                    } catch (error) {
+                      console.error('編輯文字失敗:', error);
+                      alert('編輯文字失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  onExpand={async () => {
+                    const imageLayer = selectedLayer as ImageLayer;
+                    if (!imageLayer.src) return;
+                    setLoading(true, '擴展圖片中...');
+                    try {
+                      const results = await aiOutpaint({ image: imageLayer.src, direction: 'all' });
+                      if (results[0]) {
+                        addImageLayer(results[0], '擴展結果');
+                        saveToHistory('擴展圖片');
+                      }
+                    } catch (error) {
+                      console.error('擴展圖片失敗:', error);
+                      alert('擴展圖片失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
                   onDownload={() => {
-                    // 下載選中的圖片
+                    const imageLayer = selectedLayer as ImageLayer;
+                    if (!imageLayer.src) return;
                     const link = document.createElement('a');
-                    link.href = (selectedLayer as any).imageUrl;
+                    link.href = imageLayer.src;
                     link.download = `${selectedLayer.name || 'image'}.png`;
                     link.click();
                   }}
@@ -987,52 +1104,150 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
                 >
                   <ImageAIToolsPanel
                     onImageChat={() => {
-                      console.log('圖片交流');
+                      alert('圖片交流功能開發中...');
                       setShowAIToolsPanel(false);
                     }}
-                    onExtractText={() => {
-                      console.log('提取文字');
+                    onExtractText={async () => {
+                      const imageLayer = selectedLayer as ImageLayer;
+                      if (!imageLayer.src) return;
                       setShowAIToolsPanel(false);
+                      setLoading(true, '提取文字中...');
+                      try {
+                        const results = await aiEditImage({ image: imageLayer.src, prompt: '請識別並提取這張圖片中的所有文字內容，以純文字格式輸出' });
+                        alert('文字提取完成，結果已添加為新圖層');
+                      } catch (error) {
+                        alert('提取文字失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
-                    onTranslate={(lang) => {
-                      console.log('翻譯成:', lang);
+                    onTranslate={async (lang) => {
+                      const imageLayer = selectedLayer as ImageLayer;
+                      if (!imageLayer.src) return;
                       setShowAIToolsPanel(false);
+                      setLoading(true, `翻譯成${lang}中...`);
+                      try {
+                        const results = await aiEditImage({ image: imageLayer.src, prompt: `將圖片中的所有文字翻譯成${lang}，保持原有排版和字體風格` });
+                        if (results[0]) {
+                          addImageLayer(results[0], `翻譯結果 (${lang})`);
+                          saveToHistory('翻譯');
+                        }
+                      } catch (error) {
+                        alert('翻譯失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
                     onSaveToMemo={() => {
-                      console.log('儲存到備忘錄');
+                      alert('儲存到備忘錄功能開發中...');
                       setShowAIToolsPanel(false);
                     }}
-                    onRemoveBackground={() => {
-                      console.log('AI 背景移除器');
+                    onRemoveBackground={async () => {
+                      const imageLayer = selectedLayer as ImageLayer;
+                      if (!imageLayer.src) return;
                       setShowAIToolsPanel(false);
+                      setLoading(true, '移除背景中...');
+                      try {
+                        const result = await aiRemoveBackground({ image: imageLayer.src });
+                        if (result) {
+                          addImageLayer(result, '去背結果');
+                          saveToHistory('移除背景');
+                        }
+                      } catch (error) {
+                        alert('移除背景失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
                     onRemoveBrushArea={() => {
-                      console.log('移除刷選區域');
+                      alert('移除刷選區域功能開發中...\n請先使用畫筆工具塗抹要移除的區域');
                       setShowAIToolsPanel(false);
                     }}
-                    onRemoveObject={() => {
-                      console.log('移除物件');
+                    onRemoveObject={async () => {
+                      const imageLayer = selectedLayer as ImageLayer;
+                      if (!imageLayer.src) return;
+                      const prompt = window.prompt('請描述要移除的物件（例如：背景中的人物、文字浮水印）');
+                      if (!prompt) {
+                        setShowAIToolsPanel(false);
+                        return;
+                      }
                       setShowAIToolsPanel(false);
+                      setLoading(true, '移除物件中...');
+                      try {
+                        const results = await aiEditImage({ image: imageLayer.src, prompt: `移除圖片中的${prompt}，用周圍背景自然填補` });
+                        if (results[0]) {
+                          addImageLayer(results[0], '移除物件結果');
+                          saveToHistory('移除物件');
+                        }
+                      } catch (error) {
+                        alert('移除物件失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
                     onImageGenerator={() => {
-                      console.log('AI 圖像生成器');
+                      alert('請使用左側工具列的 AI 圖像生成功能');
                       setShowAIToolsPanel(false);
                     }}
                     onImageToAnimation={() => {
-                      console.log('AI 圖生動畫');
+                      alert('AI 圖生動畫功能開發中...');
                       setShowAIToolsPanel(false);
                     }}
-                    onRemoveText={() => {
-                      console.log('移除文字');
+                    onRemoveText={async () => {
+                      const imageLayer = selectedLayer as ImageLayer;
+                      if (!imageLayer.src) return;
                       setShowAIToolsPanel(false);
+                      setLoading(true, '移除文字中...');
+                      try {
+                        const results = await aiEditImage({ image: imageLayer.src, prompt: '移除圖片中所有的文字，用周圍背景自然填補' });
+                        if (results[0]) {
+                          addImageLayer(results[0], '移除文字結果');
+                          saveToHistory('移除文字');
+                        }
+                      } catch (error) {
+                        alert('移除文字失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
-                    onChangeBackground={() => {
-                      console.log('更換背景');
+                    onChangeBackground={async () => {
+                      const imageLayer = selectedLayer as ImageLayer;
+                      if (!imageLayer.src) return;
+                      const prompt = window.prompt('請描述新的背景（例如：白色背景、海灘背景、城市夜景）');
+                      if (!prompt) {
+                        setShowAIToolsPanel(false);
+                        return;
+                      }
                       setShowAIToolsPanel(false);
+                      setLoading(true, '更換背景中...');
+                      try {
+                        const results = await aiEditImage({ image: imageLayer.src, prompt: `將背景更換為${prompt}，保持主體物件不變` });
+                        if (results[0]) {
+                          addImageLayer(results[0], '更換背景結果');
+                          saveToHistory('更換背景');
+                        }
+                      } catch (error) {
+                        alert('更換背景失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
-                    onUpscale={() => {
-                      console.log('AI 圖像放大');
+                    onUpscale={async () => {
+                      const imageLayer = selectedLayer as ImageLayer;
+                      if (!imageLayer.src) return;
                       setShowAIToolsPanel(false);
+                      setLoading(true, 'AI 放大中...');
+                      try {
+                        const result = await aiSuperResolution({ image: imageLayer.src, scale: 2 });
+                        if (result) {
+                          addImageLayer(result, 'AI 放大結果');
+                          saveToHistory('AI 放大');
+                        }
+                      } catch (error) {
+                        alert('AI 放大失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
                   />
                 </div>

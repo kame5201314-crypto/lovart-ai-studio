@@ -341,8 +341,13 @@ function App() {
 
   // 處理 AI 訊息
   const handleSendMessage = async (message: string) => {
+    console.log('=== handleSendMessage 開始 ===');
+    console.log('訊息:', message);
+    console.log('選擇的模型:', selectedModel);
+
     setLoading(true, '正在生成圖片...');
     try {
+      console.log('調用 generateImage...');
       const results = await generateImage({
         prompt: message,
         model: selectedModel,
@@ -351,8 +356,14 @@ function App() {
         numOutputs: 1,
       });
 
+      console.log('generateImage 返回結果:', results?.length || 0, '張圖片');
+
       if (results[0]) {
+        console.log('添加圖片到畫布, URL長度:', results[0].length);
         handleImageGenerated(results[0]);
+      } else {
+        console.warn('沒有收到圖片結果');
+        alert('生成完成但沒有收到圖片');
       }
     } catch (error) {
       console.error('生成失敗:', error);
@@ -425,6 +436,7 @@ function App() {
       <LovartHeader
         projectName={projectName}
         onProjectNameChange={(name) => setProjectName(name)}
+        onUploadImage={handleUploadImage}
       />
 
       {/* 主要內容區 */}

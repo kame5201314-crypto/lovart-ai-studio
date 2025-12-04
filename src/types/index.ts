@@ -128,14 +128,7 @@ export interface PenLayer extends BaseLayer {
 export type AIModel =
   | 'gemini-flash'
   | 'nano-banana'
-  | 'nano-banana-pro'
-  | 'flux-pro'
-  | 'flux-schnell'
-  | 'sdxl'
-  | 'midjourney'
-  | 'runway'
-  | 'sora'
-  | 'veo';
+  | 'nano-banana-pro';
 
 export interface AIModelConfig {
   id: AIModel;
@@ -163,7 +156,7 @@ export interface InpaintRequest {
   image: string; // Base64
   mask: string; // Base64
   prompt: string;
-  model: AIModel;
+  model?: string; // 模型 ID（可選）
 }
 
 export interface OutpaintRequest {
@@ -171,7 +164,7 @@ export interface OutpaintRequest {
   direction: 'left' | 'right' | 'up' | 'down' | 'all';
   expandSize: number;
   prompt?: string;
-  model: AIModel;
+  model?: string; // 模型 ID（可選）
 }
 
 export interface RemoveBackgroundRequest {

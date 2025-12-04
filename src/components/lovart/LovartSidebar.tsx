@@ -53,8 +53,6 @@ const aiModels: { id: AIModel; name: string; icon: string }[] = [
   { id: 'gemini-flash', name: 'Gemini 2.5 Flash', icon: '✨' },
   { id: 'nano-banana-pro', name: 'Nano Banana Pro', icon: '◉' },
   { id: 'nano-banana', name: 'Nano Banana', icon: '◉' },
-  { id: 'flux-pro', name: 'Flux Pro', icon: '▊' },
-  { id: 'flux-schnell', name: 'Flux Schnell', icon: '⚡' },
 ];
 
 // 對話歷史項目

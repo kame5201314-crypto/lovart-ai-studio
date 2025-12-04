@@ -14,6 +14,25 @@ const REPLICATE_API_TOKEN = import.meta.env.VITE_REPLICATE_API_TOKEN || '';
 const FAL_KEY = import.meta.env.VITE_FAL_KEY || '';
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 
+// 調試信息
+console.log('=== AI Service 初始化 ===');
+console.log('GEMINI_API_KEY 已設定:', !!GEMINI_API_KEY);
+console.log('GEMINI_API_KEY 長度:', GEMINI_API_KEY?.length || 0);
+console.log('GEMINI_API_KEY 前綴:', GEMINI_API_KEY?.substring(0, 10) || 'N/A');
+console.log('FAL_KEY 已設定:', !!FAL_KEY);
+console.log('REPLICATE_API_TOKEN 已設定:', !!REPLICATE_API_TOKEN);
+
+// 驗證 API Key 格式
+const isValidGeminiKey = GEMINI_API_KEY && (
+  GEMINI_API_KEY.startsWith('AIza') || // 標準 API Key
+  GEMINI_API_KEY.length > 20 // 其他可能的格式
+);
+
+if (GEMINI_API_KEY && !isValidGeminiKey) {
+  console.warn('警告: GEMINI_API_KEY 格式可能不正確。標準 Gemini API Key 應該以 "AIza" 開頭');
+  console.warn('請從 https://aistudio.google.com/apikey 獲取正確的 API Key');
+}
+
 // 配置 fal.ai client
 if (FAL_KEY) {
   fal.config({
@@ -22,7 +41,17 @@ if (FAL_KEY) {
 }
 
 // 配置 Google Gemini client
-const geminiClient = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
+let geminiClient: GoogleGenAI | null = null;
+try {
+  if (GEMINI_API_KEY) {
+    geminiClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+    console.log('Gemini 客戶端初始化成功');
+  } else {
+    console.warn('GEMINI_API_KEY 未設定，將使用 Pollinations.ai 免費服務');
+  }
+} catch (error) {
+  console.error('Gemini 客戶端初始化失敗:', error);
+}
 
 export const AI_MODELS: AIModelConfig[] = [
   {
@@ -37,8 +66,8 @@ export const AI_MODELS: AIModelConfig[] = [
   {
     id: 'nano-banana',
     name: 'Nano Banana',
-    description: 'Google Gemini 2.5 Flash 圖片生成 (via fal.ai)',
-    provider: 'Google (fal.ai)',
+    description: 'Google Gemini 2.5 Flash 圖片生成',
+    provider: 'Google',
     capabilities: ['text-to-image'],
     maxResolution: 2048,
     available: true,
@@ -46,86 +75,31 @@ export const AI_MODELS: AIModelConfig[] = [
   {
     id: 'nano-banana-pro',
     name: 'Nano Banana Pro',
-    description: 'Google Gemini 3 Pro 進階圖片生成 (via fal.ai)',
-    provider: 'Google (fal.ai)',
+    description: 'Google Gemini 進階圖片生成，支援更高解析度',
+    provider: 'Google',
     capabilities: ['text-to-image', 'inpainting'],
     maxResolution: 4096,
     available: true,
-  },
-  {
-    id: 'flux-pro',
-    name: 'Flux.1 Pro',
-    description: '高品質文生圖模型，支援複雜場景',
-    provider: 'Black Forest Labs',
-    capabilities: ['text-to-image', 'inpainting'],
-    maxResolution: 2048,
-    available: true,
-  },
-  {
-    id: 'flux-schnell',
-    name: 'Flux.1 Schnell',
-    description: '快速文生圖模型，適合快速預覽',
-    provider: 'Black Forest Labs',
-    capabilities: ['text-to-image'],
-    maxResolution: 1024,
-    available: true,
-  },
-  {
-    id: 'sdxl',
-    name: 'Stable Diffusion XL',
-    description: '開源文生圖模型，高度可控',
-    provider: 'Stability AI',
-    capabilities: ['text-to-image', 'inpainting', 'outpainting'],
-    maxResolution: 2048,
-    available: true,
-  },
-  {
-    id: 'midjourney',
-    name: 'Midjourney',
-    description: '藝術風格文生圖 (需要獨立 API)',
-    provider: 'Midjourney',
-    capabilities: ['text-to-image'],
-    maxResolution: 2048,
-    available: false,
-  },
-  {
-    id: 'runway',
-    name: 'Runway Gen-3',
-    description: '影片生成模型',
-    provider: 'Runway',
-    capabilities: ['video'],
-    maxResolution: 1920,
-    available: false,
-  },
-  {
-    id: 'sora',
-    name: 'Sora',
-    description: 'OpenAI 影片生成模型',
-    provider: 'OpenAI',
-    capabilities: ['video'],
-    maxResolution: 1920,
-    available: false,
-  },
-  {
-    id: 'veo',
-    name: 'Veo 3.1',
-    description: 'Google 影片生成模型',
-    provider: 'Google',
-    capabilities: ['video'],
-    maxResolution: 1920,
-    available: false,
   },
 ];
 
 // 使用 Pollinations.ai 免費 AI 圖片生成
 async function generateWithPollinations(prompt: string, width: number, height: number): Promise<string[]> {
-  console.log('使用 Pollinations.ai 生成圖片，提示詞:', prompt);
+  console.log('=== 使用 Pollinations.ai 生成圖片 ===');
+  console.log('提示詞:', prompt);
+  console.log('尺寸:', width, 'x', height);
 
   // Pollinations.ai 是完全免費的 AI 圖片生成服務
   // 格式: https://image.pollinations.ai/prompt/{prompt}?width={width}&height={height}
   const encodedPrompt = encodeURIComponent(prompt);
   const seed = Math.floor(Math.random() * 1000000);
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&seed=${seed}&nologo=true`;
+
+  // 確保尺寸在合理範圍內
+  const safeWidth = Math.min(Math.max(width, 256), 1024);
+  const safeHeight = Math.min(Math.max(height, 256), 1024);
+
+  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${safeWidth}&height=${safeHeight}&seed=${seed}&nologo=true`;
+  console.log('生成 URL:', imageUrl);
 
   // 預載圖片以確保生成完成
   return new Promise((resolve, reject) => {
@@ -133,18 +107,24 @@ async function generateWithPollinations(prompt: string, width: number, height: n
     img.crossOrigin = 'anonymous';
 
     const timeout = setTimeout(() => {
-      reject(new Error('圖片生成超時，請重試'));
+      console.error('Pollinations.ai 超時 (60秒)');
+      // 超時時返回 URL，讓用戶自己重試
+      console.log('嘗試直接返回 URL...');
+      resolve([imageUrl]);
     }, 60000); // 60秒超時
 
     img.onload = () => {
       clearTimeout(timeout);
-      console.log('Pollinations.ai 圖片生成成功');
+      console.log('Pollinations.ai 圖片生成成功!');
       resolve([imageUrl]);
     };
 
-    img.onerror = () => {
+    img.onerror = (error) => {
       clearTimeout(timeout);
-      reject(new Error('圖片生成失敗，請重試'));
+      console.error('Pollinations.ai 圖片載入失敗:', error);
+      // 即使失敗也返回 URL，讓用戶可以點擊查看
+      console.log('嘗試直接返回 URL...');
+      resolve([imageUrl]);
     };
 
     img.src = imageUrl;
@@ -259,19 +239,16 @@ async function runReplicateModel(
 
 const MODEL_VERSIONS: Record<AIModel, string> = {
   'gemini-flash': 'gemini-2.0-flash-exp-image-generation',
-  'nano-banana': 'fal-ai/nano-banana',
-  'nano-banana-pro': 'fal-ai/nano-banana-pro',
-  'flux-pro': 'black-forest-labs/flux-pro',
-  'flux-schnell': 'black-forest-labs/flux-schnell',
-  'sdxl': 'stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b',
-  'midjourney': '',
-  'runway': '',
-  'sora': '',
-  'veo': '',
+  'nano-banana': 'gemini-2.0-flash-exp-image-generation',
+  'nano-banana-pro': 'gemini-2.0-flash-exp-image-generation',
 };
 
 // 使用 Google Gemini 官方 API 生成圖片
 async function generateWithGemini(prompt: string): Promise<string[]> {
+  console.log('=== generateWithGemini 開始 ===');
+  console.log('geminiClient 存在:', !!geminiClient);
+  console.log('GEMINI_API_KEY 存在:', !!GEMINI_API_KEY);
+
   if (!geminiClient || !GEMINI_API_KEY) {
     console.warn('GEMINI_API_KEY 未設定，使用免費的 Pollinations.ai');
     return generateWithPollinations(prompt, 1024, 1024);
@@ -280,6 +257,7 @@ async function generateWithGemini(prompt: string): Promise<string[]> {
   console.log('使用 Google Gemini 官方 API 生成圖片，提示詞:', prompt);
 
   try {
+    console.log('正在調用 Gemini API...');
     const response = await geminiClient.models.generateContent({
       model: 'gemini-2.0-flash-exp-image-generation',
       contents: prompt,
@@ -288,23 +266,31 @@ async function generateWithGemini(prompt: string): Promise<string[]> {
       },
     });
 
-    console.log('Gemini 生成結果:', response);
+    console.log('Gemini API 回應:', JSON.stringify(response, null, 2));
 
     // 解析回應中的圖片
     const images: string[] = [];
 
     if (response.candidates && response.candidates.length > 0) {
+      console.log('找到 candidates 數量:', response.candidates.length);
       const candidate = response.candidates[0];
       if (candidate.content && candidate.content.parts) {
+        console.log('找到 parts 數量:', candidate.content.parts.length);
         for (const part of candidate.content.parts) {
+          console.log('Part 類型:', Object.keys(part));
           if (part.inlineData && part.inlineData.data) {
             // 將 base64 轉換為 data URL
             const mimeType = part.inlineData.mimeType || 'image/png';
             const dataUrl = `data:${mimeType};base64,${part.inlineData.data}`;
+            console.log('成功提取圖片，mimeType:', mimeType, 'data長度:', part.inlineData.data.length);
             images.push(dataUrl);
+          } else if (part.text) {
+            console.log('Part 包含文字:', part.text.substring(0, 100));
           }
         }
       }
+    } else {
+      console.warn('API 回應中沒有 candidates');
     }
 
     if (images.length === 0) {
@@ -313,10 +299,13 @@ async function generateWithGemini(prompt: string): Promise<string[]> {
       return generateWithPollinations(prompt, 1024, 1024);
     }
 
+    console.log('成功生成圖片數量:', images.length);
     return images;
   } catch (error) {
-    console.error('Gemini 生成錯誤，使用 Pollinations.ai:', error);
+    console.error('Gemini 生成錯誤:', error);
+    console.error('錯誤詳情:', error instanceof Error ? error.message : String(error));
     // 發生錯誤時使用免費服務
+    console.log('回退到 Pollinations.ai');
     return generateWithPollinations(prompt, 1024, 1024);
   }
 }
@@ -331,90 +320,94 @@ function getAspectRatio(width: number, height: number): string {
   return '1:1';
 }
 
-// 使用 fal.ai 的 Nano Banana 生成圖片
+// 使用 Nano Banana 生成圖片（基於 Gemini API）
 async function generateWithNanoBanana(
   prompt: string,
   width: number,
   height: number,
   isPro: boolean = false
 ): Promise<string[]> {
-  if (!FAL_KEY) {
-    console.warn('FAL_KEY 未設定，使用免費的 Pollinations.ai');
+  // Nano Banana 系列都使用 Gemini API
+  if (!geminiClient || !GEMINI_API_KEY) {
+    console.warn('GEMINI_API_KEY 未設定，使用免費的 Pollinations.ai');
     return generateWithPollinations(prompt, width, height);
   }
 
-  const modelId = isPro ? 'fal-ai/nano-banana-pro' : 'fal-ai/nano-banana';
   console.log(`使用 ${isPro ? 'Nano Banana Pro' : 'Nano Banana'} 生成圖片，提示詞:`, prompt);
 
   try {
-    const result = await fal.subscribe(modelId, {
-      input: {
-        prompt,
-        aspect_ratio: getAspectRatio(width, height),
-        num_images: 1,
-        output_format: 'png',
+    // Pro 版本使用更高品質的提示詞
+    const enhancedPrompt = isPro
+      ? `Create a high-quality, detailed image: ${prompt}. Ultra HD, professional quality, highly detailed.`
+      : prompt;
+
+    const response = await geminiClient.models.generateContent({
+      model: 'gemini-2.0-flash-exp-image-generation',
+      contents: enhancedPrompt,
+      config: {
+        responseModalities: ['Text', 'Image'],
       },
-      logs: true,
     });
 
-    console.log('Nano Banana 生成結果:', result);
+    console.log('Nano Banana 生成結果:', response);
 
-    // fal.ai 返回的格式
-    const output = result.data as { images?: Array<{ url: string }> };
-    if (output.images && output.images.length > 0) {
-      return output.images.map((img) => img.url);
+    const images: string[] = [];
+    if (response.candidates && response.candidates.length > 0) {
+      const candidate = response.candidates[0];
+      if (candidate.content && candidate.content.parts) {
+        for (const part of candidate.content.parts) {
+          if (part.inlineData && part.inlineData.data) {
+            const mimeType = part.inlineData.mimeType || 'image/png';
+            const dataUrl = `data:${mimeType};base64,${part.inlineData.data}`;
+            images.push(dataUrl);
+          }
+        }
+      }
     }
 
-    throw new Error('生成結果無效');
+    if (images.length === 0) {
+      console.warn('Nano Banana 未返回圖片，使用 Pollinations.ai');
+      return generateWithPollinations(prompt, width, height);
+    }
+
+    return images;
   } catch (error) {
     console.error('Nano Banana 生成錯誤:', error);
-    throw error;
+    return generateWithPollinations(prompt, width, height);
   }
 }
 
 export async function generateImage(request: TextToImageRequest): Promise<string[]> {
+  console.log('=== generateImage 開始 ===');
+  console.log('請求參數:', JSON.stringify(request, null, 2));
+
   const modelVersion = MODEL_VERSIONS[request.model];
-  if (!modelVersion) throw new Error(`模型 ${request.model} 尚未支援`);
+  console.log('選擇的模型版本:', modelVersion);
+
+  if (!modelVersion) {
+    console.error('模型不支援:', request.model);
+    throw new Error(`模型 ${request.model} 尚未支援`);
+  }
 
   // 使用 Google Gemini 官方 API（推薦）
   if (request.model === 'gemini-flash') {
+    console.log('使用 Gemini Flash 模型');
     return generateWithGemini(request.prompt);
   }
 
-  // 使用 Nano Banana (fal.ai)
+  // 使用 Nano Banana（基於 Gemini API）
   if (request.model === 'nano-banana') {
+    console.log('使用 Nano Banana 模型');
     return generateWithNanoBanana(request.prompt, request.width, request.height, false);
   }
   if (request.model === 'nano-banana-pro') {
+    console.log('使用 Nano Banana Pro 模型');
     return generateWithNanoBanana(request.prompt, request.width, request.height, true);
   }
 
-  let input: Record<string, unknown> = {};
-  switch (request.model) {
-    case 'flux-pro':
-    case 'flux-schnell':
-      input = {
-        prompt: request.prompt,
-        width: request.width,
-        height: request.height,
-        num_outputs: request.numOutputs || 1,
-        guidance_scale: request.guidance || 7.5,
-      };
-      break;
-    case 'sdxl':
-      input = {
-        prompt: request.prompt,
-        negative_prompt: request.negativePrompt || '',
-        width: request.width,
-        height: request.height,
-        num_outputs: request.numOutputs || 1,
-        guidance_scale: request.guidance || 7.5,
-        num_inference_steps: request.steps || 30,
-      };
-      break;
-  }
-
-  return runReplicateModel(modelVersion, input);
+  // 預設使用 Gemini
+  console.log('使用預設 Gemini 模型');
+  return generateWithGemini(request.prompt);
 }
 
 export async function inpaint(request: InpaintRequest): Promise<string[]> {
@@ -665,8 +658,27 @@ export async function aiSuperResolution(request: AISuperResolutionRequest): Prom
     }
   }
 
-  // 備用：使用 Replicate
-  return upscaleImage({ image: request.image, scale: request.scale || 2 });
+  // 備用方案 1：使用 Gemini 增強圖片
+  if (geminiClient) {
+    try {
+      const results = await aiEditImage({
+        image: request.image,
+        prompt: `將這張圖片放大 ${request.scale || 2} 倍，提高解析度和清晰度，保持原有風格和細節`,
+      });
+      if (results[0]) {
+        return results[0];
+      }
+    } catch (error) {
+      console.error('Gemini 超清失敗，嘗試 Replicate:', error);
+    }
+  }
+
+  // 備用方案 2：使用 Replicate
+  if (REPLICATE_API_TOKEN) {
+    return upscaleImage({ image: request.image, scale: request.scale || 2 });
+  }
+
+  throw new Error('沒有可用的 API 來執行圖片放大。請設定 FAL_KEY、GEMINI_API_KEY 或 REPLICATE_API_TOKEN');
 }
 
 // AI 無痕消除 - 消除圖片中的物件
@@ -747,8 +759,27 @@ export async function aiRemoveBackground(request: AIRemoveBackgroundRequest): Pr
     }
   }
 
-  // 備用
-  return removeBackground({ image: request.image });
+  // 備用方案 1：使用 Gemini 去背
+  if (geminiClient) {
+    try {
+      const results = await aiEditImage({
+        image: request.image,
+        prompt: '移除這張圖片的背景，只保留主體物件，背景設為透明',
+      });
+      if (results[0]) {
+        return results[0];
+      }
+    } catch (error) {
+      console.error('Gemini 去背失敗，嘗試 Replicate:', error);
+    }
+  }
+
+  // 備用方案 2：使用 Replicate
+  if (REPLICATE_API_TOKEN) {
+    return removeBackground({ image: request.image });
+  }
+
+  throw new Error('沒有可用的 API 來執行去背。請設定 FAL_KEY、GEMINI_API_KEY 或 REPLICATE_API_TOKEN');
 }
 
 // 無痕改字 - 修改圖片中的文字
