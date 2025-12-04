@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { LovartToolbar, LovartSidebar, LovartHeader } from './components/lovart';
 import { SmartCanvas, ImageGeneratorBlock, VideoGeneratorBlock } from './components/canvas';
-import { ContextMenu, getImageContextMenuItems, OnboardingTutorial, NanoBananaProTip } from './components/ui';
+import { ContextMenu, getImageContextMenuItems, OnboardingTutorial, NanoBananaProTip, SelectionToolbar } from './components/ui';
 import { StudioPanel } from './components/studio';
 import { useCanvasStore } from './store/canvasStore';
 import {

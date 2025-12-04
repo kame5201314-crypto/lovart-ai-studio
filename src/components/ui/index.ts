@@ -6,3 +6,4 @@ export { NanoBananaProTip } from './NanoBananaProTip';
 export { ImageToolbar } from './ImageToolbar';
 export { ChatToolbar } from './ChatToolbar';
 export { ImageAIToolsPanel, AIToolsTrigger } from './ImageAIToolsPanel';
+export { SelectionToolbar } from './SelectionToolbar';
