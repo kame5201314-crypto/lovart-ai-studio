@@ -8,7 +8,7 @@ interface ImageLayerComponentProps {
   layer: ImageLayer;
   isDraggable: boolean;
   isSelected?: boolean;
-  onClick: (e: Konva.KonvaEventObject<MouseEvent>) => void;
+  onClick: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => void;
   onTransformEnd: (e: Konva.KonvaEventObject<Event>) => void;
 }
@@ -43,7 +43,7 @@ export const ImageLayerComponent: React.FC<ImageLayerComponentProps> = ({
       opacity={layer.opacity}
       draggable={isDraggable}
       onClick={onClick}
-      onTap={onClick}
+      onTap={onClick as (e: Konva.KonvaEventObject<TouchEvent>) => void}
       onDragEnd={onDragEnd}
       onTransformEnd={onTransformEnd}
     />

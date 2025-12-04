@@ -523,7 +523,7 @@ function App() {
                     try {
                       const results = await generateImage({
                         prompt,
-                        model,
+                        model: model as AIModel,
                         width,
                         height,
                         numOutputs: 1,
