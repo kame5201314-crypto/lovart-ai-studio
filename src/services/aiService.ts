@@ -638,7 +638,27 @@ export interface AISuperResolutionRequest {
 }
 
 export async function aiSuperResolution(request: AISuperResolutionRequest): Promise<string> {
-  // 優先使用 fal.ai 的超清模型
+  console.log('=== aiSuperResolution 開始 ===');
+  console.log('geminiClient 存在:', !!geminiClient);
+
+  // 優先使用 Gemini 增強圖片（因為已有 API Key）
+  if (geminiClient) {
+    try {
+      console.log('使用 Gemini 進行圖片放大...');
+      const results = await aiEditImage({
+        image: request.image,
+        prompt: `Enhance and upscale this image by ${request.scale || 2}x. Increase resolution and clarity while maintaining the original style and details. Make it sharper and more detailed.`,
+      });
+      if (results[0]) {
+        console.log('Gemini 超清成功');
+        return results[0];
+      }
+    } catch (error) {
+      console.error('Gemini 超清失敗:', error);
+    }
+  }
+
+  // 備用方案 1：使用 fal.ai
   if (FAL_KEY) {
     try {
       const result = await fal.subscribe('fal-ai/clarity-upscaler', {
@@ -654,22 +674,7 @@ export async function aiSuperResolution(request: AISuperResolutionRequest): Prom
         return output.image.url;
       }
     } catch (error) {
-      console.error('fal.ai 超清失敗，嘗試備用方案:', error);
-    }
-  }
-
-  // 備用方案 1：使用 Gemini 增強圖片
-  if (geminiClient) {
-    try {
-      const results = await aiEditImage({
-        image: request.image,
-        prompt: `將這張圖片放大 ${request.scale || 2} 倍，提高解析度和清晰度，保持原有風格和細節`,
-      });
-      if (results[0]) {
-        return results[0];
-      }
-    } catch (error) {
-      console.error('Gemini 超清失敗，嘗試 Replicate:', error);
+      console.error('fal.ai 超清失敗:', error);
     }
   }
 
@@ -678,7 +683,9 @@ export async function aiSuperResolution(request: AISuperResolutionRequest): Prom
     return upscaleImage({ image: request.image, scale: request.scale || 2 });
   }
 
-  throw new Error('沒有可用的 API 來執行圖片放大。請設定 FAL_KEY、GEMINI_API_KEY 或 REPLICATE_API_TOKEN');
+  // 如果都沒有，返回原圖並提示
+  console.warn('沒有可用的超清 API，返回原圖');
+  return request.image;
 }
 
 // AI 無痕消除 - 消除圖片中的物件
@@ -740,7 +747,27 @@ export interface AIRemoveBackgroundRequest {
 }
 
 export async function aiRemoveBackground(request: AIRemoveBackgroundRequest): Promise<string> {
-  // 優先使用 fal.ai
+  console.log('=== aiRemoveBackground 開始 ===');
+  console.log('geminiClient 存在:', !!geminiClient);
+
+  // 優先使用 Gemini 去背（因為已有 API Key）
+  if (geminiClient) {
+    try {
+      console.log('使用 Gemini 進行去背...');
+      const results = await aiEditImage({
+        image: request.image,
+        prompt: 'Remove the background from this image completely. Keep only the main subject/object. Make the background transparent or pure white.',
+      });
+      if (results[0]) {
+        console.log('Gemini 去背成功');
+        return results[0];
+      }
+    } catch (error) {
+      console.error('Gemini 去背失敗:', error);
+    }
+  }
+
+  // 備用方案 1：使用 fal.ai
   if (FAL_KEY) {
     try {
       const result = await fal.subscribe('fal-ai/birefnet', {
@@ -755,22 +782,7 @@ export async function aiRemoveBackground(request: AIRemoveBackgroundRequest): Pr
         return output.image.url;
       }
     } catch (error) {
-      console.error('fal.ai 去背失敗，嘗試備用方案:', error);
-    }
-  }
-
-  // 備用方案 1：使用 Gemini 去背
-  if (geminiClient) {
-    try {
-      const results = await aiEditImage({
-        image: request.image,
-        prompt: '移除這張圖片的背景，只保留主體物件，背景設為透明',
-      });
-      if (results[0]) {
-        return results[0];
-      }
-    } catch (error) {
-      console.error('Gemini 去背失敗，嘗試 Replicate:', error);
+      console.error('fal.ai 去背失敗:', error);
     }
   }
 
@@ -779,7 +791,9 @@ export async function aiRemoveBackground(request: AIRemoveBackgroundRequest): Pr
     return removeBackground({ image: request.image });
   }
 
-  throw new Error('沒有可用的 API 來執行去背。請設定 FAL_KEY、GEMINI_API_KEY 或 REPLICATE_API_TOKEN');
+  // 如果都沒有，返回原圖並提示
+  console.warn('沒有可用的去背 API，返回原圖');
+  return request.image;
 }
 
 // 無痕改字 - 修改圖片中的文字

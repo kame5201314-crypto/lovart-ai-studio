@@ -615,6 +615,8 @@ function App() {
           onOpenStudio={() => setShowStudioPanel(true)}
           chatHistory={chatHistory}
           generatedFiles={generatedFiles}
+          isGenerating={isLoading}
+          lastGeneratedImage={layers.length > 0 ? (layers[layers.length - 1] as ImageLayer)?.src : undefined}
           onNewChat={() => {
             console.log('新建對話');
             // 清空當前對話並開始新對話

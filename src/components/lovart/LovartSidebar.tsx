@@ -11,6 +11,9 @@ import {
   ChevronDown,
   Sparkles,
   Camera,
+  User,
+  Bot,
+  Loader2,
 } from 'lucide-react';
 import { useCanvasStore } from '../../store/canvasStore';
 import { ChatToolbar } from '../ui/ChatToolbar';
@@ -71,6 +74,16 @@ interface GeneratedFile {
   type: 'image' | 'video';
 }
 
+// 對話訊息類型
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  image?: string;
+  timestamp: Date;
+  isLoading?: boolean;
+}
+
 interface LovartSidebarProps {
   onSendMessage?: (message: string, model: string) => void;
   onSelectExample?: (example: typeof exampleCards[0]) => void;
@@ -81,6 +94,8 @@ interface LovartSidebarProps {
   onSelectHistory?: (chatId: string) => void;
   onShare?: () => void;
   onSelectFile?: (fileId: string) => void;
+  isGenerating?: boolean;
+  lastGeneratedImage?: string;
 }
 
 export const LovartSidebar: React.FC<LovartSidebarProps> = ({
@@ -93,6 +108,8 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
   onSelectHistory,
   onShare,
   onSelectFile,
+  isGenerating = false,
+  lastGeneratedImage,
 }) => {
   const { selectedModel, setSelectedModel } = useCanvasStore();
   const [message, setMessage] = useState('');
@@ -100,13 +117,90 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
   const [showHistory, setShowHistory] = useState(false);
   const [thinkingMode, setThinkingMode] = useState<'thinking' | 'fast'>('fast');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  // 對話記錄狀態
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   const handleSend = () => {
     if (message.trim()) {
+      // 添加用戶訊息到對話記錄
+      const userMessage: ChatMessage = {
+        id: Date.now().toString(),
+        role: 'user',
+        content: message.trim(),
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, userMessage]);
+
+      // 添加 AI 回應佔位符（正在生成中）
+      const aiMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: '正在生成圖片...',
+        timestamp: new Date(),
+        isLoading: true,
+      };
+      setMessages(prev => [...prev, aiMessage]);
+
+      // 發送訊息
       onSendMessage?.(message, selectedModel);
       setMessage('');
+
+      // 滾動到底部
+      setTimeout(() => {
+        chatContainerRef.current?.scrollTo({
+          top: chatContainerRef.current.scrollHeight,
+          behavior: 'smooth',
+        });
+      }, 100);
     }
   };
+
+  // 當收到生成的圖片時，更新最後一條 AI 訊息
+  React.useEffect(() => {
+    if (lastGeneratedImage && messages.length > 0) {
+      setMessages(prev => {
+        const newMessages = [...prev];
+        // 找到最後一條 AI 訊息
+        for (let i = newMessages.length - 1; i >= 0; i--) {
+          if (newMessages[i].role === 'assistant' && newMessages[i].isLoading) {
+            newMessages[i] = {
+              ...newMessages[i],
+              content: '圖片已生成！',
+              image: lastGeneratedImage,
+              isLoading: false,
+            };
+            break;
+          }
+        }
+        return newMessages;
+      });
+    }
+  }, [lastGeneratedImage]);
+
+  // 當生成狀態改變時更新
+  React.useEffect(() => {
+    if (!isGenerating && messages.length > 0) {
+      setMessages(prev => {
+        const newMessages = [...prev];
+        // 找到正在載入的 AI 訊息並更新
+        for (let i = newMessages.length - 1; i >= 0; i--) {
+          if (newMessages[i].role === 'assistant' && newMessages[i].isLoading) {
+            if (!newMessages[i].image) {
+              newMessages[i] = {
+                ...newMessages[i],
+                content: '生成完成',
+                isLoading: false,
+              };
+            }
+            break;
+          }
+        }
+        return newMessages;
+      });
+    }
+  }, [isGenerating]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -140,48 +234,108 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
       </div>
 
       {/* 主要內容區 */}
-      <div className="flex-1 overflow-y-auto p-4">
-        {/* AI 頭像和歡迎訊息 */}
-        <div className="flex flex-col items-center mb-6">
-          <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-            <span className="text-2xl">🤖</span>
-          </div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-1">Hi，我是你的 AI 設計師</h2>
-          <p className="text-sm text-gray-500">讓我們開始今天的創作吧！</p>
-        </div>
+      <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4">
+        {messages.length === 0 ? (
+          <>
+            {/* AI 頭像和歡迎訊息 */}
+            <div className="flex flex-col items-center mb-6">
+              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                <span className="text-2xl">🤖</span>
+              </div>
+              <h2 className="text-xl font-semibold text-gray-900 mb-1">Hi，我是你的 AI 設計師</h2>
+              <p className="text-sm text-gray-500">讓我們開始今天的創作吧！</p>
+            </div>
 
-        {/* 範例卡片 */}
-        <div className="space-y-3">
-          {exampleCards.map((card) => (
-            <button
-              key={card.id}
-              onClick={() => onSelectExample?.(card)}
-              className="w-full bg-gray-50 hover:bg-gray-100 rounded-xl p-3 text-left transition-colors"
-            >
-              <div className="flex justify-between items-start">
-                <div className="flex-1 pr-3">
-                  <h3 className="font-medium text-gray-900 text-sm mb-1">{card.title}</h3>
-                  <p className="text-xs text-gray-500 line-clamp-2">{card.description}</p>
+            {/* 範例卡片 */}
+            <div className="space-y-3">
+              {exampleCards.map((card) => (
+                <button
+                  key={card.id}
+                  onClick={() => onSelectExample?.(card)}
+                  className="w-full bg-gray-50 hover:bg-gray-100 rounded-xl p-3 text-left transition-colors"
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1 pr-3">
+                      <h3 className="font-medium text-gray-900 text-sm mb-1">{card.title}</h3>
+                      <p className="text-xs text-gray-500 line-clamp-2">{card.description}</p>
+                    </div>
+                    <div className="flex gap-1">
+                      {card.images.slice(0, 3).map((img, idx) => (
+                        <img
+                          key={idx}
+                          src={img}
+                          alt=""
+                          className="w-12 h-12 rounded-lg object-cover"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* 切換更多 */}
+            <button className="w-full mt-3 py-2 text-sm text-gray-500 hover:text-gray-700 flex items-center justify-center gap-1">
+              <span className="text-xs">○</span> 切換
+            </button>
+          </>
+        ) : (
+          /* 對話記錄 */
+          <div className="space-y-4">
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
+              >
+                {/* 頭像 */}
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  msg.role === 'user' ? 'bg-blue-500' : 'bg-gray-100'
+                }`}>
+                  {msg.role === 'user' ? (
+                    <User size={16} className="text-white" />
+                  ) : (
+                    <Bot size={16} className="text-gray-600" />
+                  )}
                 </div>
-                <div className="flex gap-1">
-                  {card.images.slice(0, 3).map((img, idx) => (
-                    <img
-                      key={idx}
-                      src={img}
-                      alt=""
-                      className="w-12 h-12 rounded-lg object-cover"
-                    />
-                  ))}
+
+                {/* 訊息內容 */}
+                <div className={`max-w-[80%] ${msg.role === 'user' ? 'text-right' : ''}`}>
+                  <div className={`rounded-2xl px-4 py-2 ${
+                    msg.role === 'user'
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-gray-100 text-gray-900'
+                  }`}>
+                    {msg.isLoading ? (
+                      <div className="flex items-center gap-2">
+                        <Loader2 size={16} className="animate-spin" />
+                        <span>{msg.content}</span>
+                      </div>
+                    ) : (
+                      <p className="text-sm">{msg.content}</p>
+                    )}
+                  </div>
+
+                  {/* 生成的圖片 */}
+                  {msg.image && (
+                    <div className="mt-2">
+                      <img
+                        src={msg.image}
+                        alt="生成的圖片"
+                        className="rounded-lg max-w-full h-auto shadow-md"
+                        style={{ maxHeight: '200px' }}
+                      />
+                    </div>
+                  )}
+
+                  {/* 時間戳記 */}
+                  <p className={`text-xs text-gray-400 mt-1 ${msg.role === 'user' ? 'text-right' : ''}`}>
+                    {msg.timestamp.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}
+                  </p>
                 </div>
               </div>
-            </button>
-          ))}
-        </div>
-
-        {/* 切換更多 */}
-        <button className="w-full mt-3 py-2 text-sm text-gray-500 hover:text-gray-700 flex items-center justify-center gap-1">
-          <span className="text-xs">○</span> 切換
-        </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 底部輸入區 */}
