@@ -27,24 +27,6 @@ export const AI_MODELS: AIModelConfig[] = [
     available: true,
   },
   {
-    id: 'flux-pro',
-    name: 'Flux Pro',
-    description: 'Flux 高品質圖片生成',
-    provider: 'fal.ai',
-    capabilities: ['text-to-image'],
-    maxResolution: 2048,
-    available: true,
-  },
-  {
-    id: 'flux-schnell',
-    name: 'Flux Schnell',
-    description: 'Flux 快速圖片生成',
-    provider: 'fal.ai',
-    capabilities: ['text-to-image'],
-    maxResolution: 2048,
-    available: true,
-  },
-  {
     id: 'gemini-flash',
     name: 'Gemini 2.5 Flash',
     description: 'Google Gemini 圖片生成（需要後端支援）',
@@ -220,6 +202,48 @@ export async function aiRemoveBackground(request: AIRemoveBackgroundRequest): Pr
 
 export const removeBackground = aiRemoveBackground;
 export const upscaleImage = aiSuperResolution;
+
+// ==================== 功能開發中的 API（stub） ====================
+
+export interface AIEditImageRequest {
+  image: string;
+  prompt: string;
+}
+
+export async function aiEditImage(_request: AIEditImageRequest): Promise<string[]> {
+  throw new Error('AI 改圖功能開發中');
+}
+
+export interface AIOutpaintRequest {
+  image: string;
+  direction: 'up' | 'down' | 'left' | 'right' | 'all';
+  prompt?: string;
+}
+
+export async function aiOutpaint(_request: AIOutpaintRequest): Promise<string[]> {
+  throw new Error('AI 擴圖功能開發中');
+}
+
+export interface AITextReplaceRequest {
+  image: string;
+  originalText: string;
+  newText: string;
+}
+
+export async function aiTextReplace(_request: AITextReplaceRequest): Promise<string[]> {
+  throw new Error('AI 無痕改字功能開發中');
+}
+
+export interface InpaintRequest {
+  image: string;
+  mask: string;
+  prompt: string;
+  model?: string;
+}
+
+export async function inpaint(_request: InpaintRequest): Promise<string[]> {
+  throw new Error('Inpaint 功能開發中');
+}
 
 // AI 對話類型（保持向後兼容）
 export interface AIDesignChatMessage {
