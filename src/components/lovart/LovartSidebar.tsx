@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import {
+  Plus,
   Paperclip,
   AtSign,
   Lightbulb,
@@ -10,6 +11,9 @@ import {
   ChevronDown,
   Sparkles,
   Camera,
+  User,
+  Bot,
+  Loader2,
 } from 'lucide-react';
 import { useCanvasStore } from '../../store/canvasStore';
 import { ChatToolbar } from '../ui/ChatToolbar';
@@ -52,8 +56,6 @@ const aiModels: { id: AIModel; name: string; icon: string }[] = [
   { id: 'gemini-flash', name: 'Gemini 2.5 Flash', icon: '✨' },
   { id: 'nano-banana-pro', name: 'Nano Banana Pro', icon: '◉' },
   { id: 'nano-banana', name: 'Nano Banana', icon: '◉' },
-  { id: 'flux-pro', name: 'Flux Pro', icon: '▊' },
-  { id: 'flux-schnell', name: 'Flux Schnell', icon: '⚡' },
 ];
 
 // 對話歷史項目
@@ -72,13 +74,14 @@ interface GeneratedFile {
   type: 'image' | 'video';
 }
 
-// 對話訊息
+// 對話訊息類型
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   image?: string;
   timestamp: Date;
+  isLoading?: boolean;
 }
 
 interface LovartSidebarProps {
@@ -91,9 +94,8 @@ interface LovartSidebarProps {
   onSelectHistory?: (chatId: string) => void;
   onShare?: () => void;
   onSelectFile?: (fileId: string) => void;
-  messages?: ChatMessage[];
-  isCollapsed?: boolean;
-  onToggleCollapse?: () => void;
+  isGenerating?: boolean;
+  lastGeneratedImage?: string;
 }
 
 export const LovartSidebar: React.FC<LovartSidebarProps> = ({
@@ -106,48 +108,99 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
   onSelectHistory,
   onShare,
   onSelectFile,
-  messages = [],
-  isCollapsed = false,
+  isGenerating = false,
+  lastGeneratedImage,
 }) => {
   const { selectedModel, setSelectedModel } = useCanvasStore();
   const [message, setMessage] = useState('');
   const [showModelSelector, setShowModelSelector] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [thinkingMode, setThinkingMode] = useState<'thinking' | 'fast'>('fast');
-  const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  // 自動滾動到最新訊息
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  React.useEffect(() => {
-    scrollToBottom();
-  }, [localMessages, messages]);
+  // 對話記錄狀態
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   const handleSend = () => {
     if (message.trim()) {
-      // 添加用戶訊息到本地狀態
+      // 添加用戶訊息到對話記錄
       const userMessage: ChatMessage = {
         id: Date.now().toString(),
         role: 'user',
-        content: message,
+        content: message.trim(),
         timestamp: new Date(),
       };
-      setLocalMessages(prev => [...prev, userMessage]);
+      setMessages(prev => [...prev, userMessage]);
 
+      // 添加 AI 回應佔位符（正在生成中）
+      const aiMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: '正在生成圖片...',
+        timestamp: new Date(),
+        isLoading: true,
+      };
+      setMessages(prev => [...prev, aiMessage]);
+
+      // 發送訊息
       onSendMessage?.(message, selectedModel);
       setMessage('');
+
+      // 滾動到底部
+      setTimeout(() => {
+        chatContainerRef.current?.scrollTo({
+          top: chatContainerRef.current.scrollHeight,
+          behavior: 'smooth',
+        });
+      }, 100);
     }
   };
 
-  // 當收到新的 messages prop 時更新
+  // 當收到生成的圖片時，更新最後一條 AI 訊息
   React.useEffect(() => {
-    if (messages.length > 0) {
-      setLocalMessages(messages);
+    if (lastGeneratedImage && messages.length > 0) {
+      setMessages(prev => {
+        const newMessages = [...prev];
+        // 找到最後一條 AI 訊息
+        for (let i = newMessages.length - 1; i >= 0; i--) {
+          if (newMessages[i].role === 'assistant' && newMessages[i].isLoading) {
+            newMessages[i] = {
+              ...newMessages[i],
+              content: '圖片已生成！',
+              image: lastGeneratedImage,
+              isLoading: false,
+            };
+            break;
+          }
+        }
+        return newMessages;
+      });
     }
-  }, [messages]);
+  }, [lastGeneratedImage]);
+
+  // 當生成狀態改變時更新
+  React.useEffect(() => {
+    if (!isGenerating && messages.length > 0) {
+      setMessages(prev => {
+        const newMessages = [...prev];
+        // 找到正在載入的 AI 訊息並更新
+        for (let i = newMessages.length - 1; i >= 0; i--) {
+          if (newMessages[i].role === 'assistant' && newMessages[i].isLoading) {
+            if (!newMessages[i].image) {
+              newMessages[i] = {
+                ...newMessages[i],
+                content: '生成完成',
+                isLoading: false,
+              };
+            }
+            break;
+          }
+        }
+        return newMessages;
+      });
+    }
+  }, [isGenerating]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -157,47 +210,39 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
   };
 
   return (
-    <div className={`${isCollapsed ? 'w-0 overflow-hidden' : 'w-[360px] min-w-[300px] max-w-[400px]'} h-full flex flex-col bg-white border-l border-gray-200 relative transition-all duration-300 md:w-[360px] sm:w-full sm:absolute sm:right-0 sm:z-40`}>
+    <div className="w-[360px] h-full flex flex-col bg-white border-l border-gray-200 relative">
       {/* 頂部工具列 */}
-      <div className="flex items-center justify-between gap-1 p-3 border-b border-gray-100 relative">
-        <span className="text-sm font-medium text-gray-700 truncate">
-          {localMessages.length > 0 ? '對話中...' : 'AI 設計師'}
-        </span>
-        <div className="flex items-center gap-1">
-          <ChatToolbar
-            onNewChat={() => {
-              setLocalMessages([]);
-              onNewChat?.();
-            }}
-            onSelectHistory={onSelectHistory}
-            onShare={onShare}
-            onSelectFile={onSelectFile}
-            chatHistory={chatHistory}
-            generatedFiles={generatedFiles}
-          />
-          <button
-            onClick={onOpenStudio}
-            className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"
-            title="智慧工作室"
-          >
-            <Camera size={18} />
-          </button>
-          <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-500" title="智慧設計師">
-            <Sparkles size={18} />
-          </button>
-        </div>
+      <div className="flex items-center justify-end gap-1 p-3 border-b border-gray-100 relative">
+        <ChatToolbar
+          onNewChat={onNewChat}
+          onSelectHistory={onSelectHistory}
+          onShare={onShare}
+          onSelectFile={onSelectFile}
+          chatHistory={chatHistory}
+          generatedFiles={generatedFiles}
+        />
+        <button
+          onClick={onOpenStudio}
+          className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"
+          title="智慧工作室"
+        >
+          <Camera size={18} />
+        </button>
+        <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-500" title="智慧設計師">
+          <Sparkles size={18} />
+        </button>
       </div>
 
       {/* 主要內容區 */}
-      <div className="flex-1 overflow-y-auto p-4">
-        {localMessages.length === 0 ? (
+      <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4">
+        {messages.length === 0 ? (
           <>
             {/* AI 頭像和歡迎訊息 */}
             <div className="flex flex-col items-center mb-6">
               <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                 <span className="text-2xl">🤖</span>
               </div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-1">Hi，我是你的 AI 設計師</h2>
+              <h2 className="text-xl font-semibold text-gray-900 mb-1">Hi，我是你的 AI 設計師</h2>
               <p className="text-sm text-gray-500">讓我們開始今天的創作吧！</p>
             </div>
 
@@ -215,12 +260,12 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
                       <p className="text-xs text-gray-500 line-clamp-2">{card.description}</p>
                     </div>
                     <div className="flex gap-1">
-                      {card.images.slice(0, 2).map((img, idx) => (
+                      {card.images.slice(0, 3).map((img, idx) => (
                         <img
                           key={idx}
                           src={img}
                           alt=""
-                          className="w-10 h-10 rounded-lg object-cover"
+                          className="w-12 h-12 rounded-lg object-cover"
                         />
                       ))}
                     </div>
@@ -235,37 +280,60 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
             </button>
           </>
         ) : (
-          /* 對話訊息列表 */
+          /* 對話記錄 */
           <div className="space-y-4">
-            {localMessages.map((msg) => (
+            {messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
               >
-                <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-2 ${
+                {/* 頭像 */}
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  msg.role === 'user' ? 'bg-blue-500' : 'bg-gray-100'
+                }`}>
+                  {msg.role === 'user' ? (
+                    <User size={16} className="text-white" />
+                  ) : (
+                    <Bot size={16} className="text-gray-600" />
+                  )}
+                </div>
+
+                {/* 訊息內容 */}
+                <div className={`max-w-[80%] ${msg.role === 'user' ? 'text-right' : ''}`}>
+                  <div className={`rounded-2xl px-4 py-2 ${
                     msg.role === 'user'
-                      ? 'bg-gray-100 text-gray-900'
-                      : 'bg-orange-50 text-gray-900'
-                  }`}
-                >
-                  {msg.role === 'assistant' && (
-                    <div className="flex items-center gap-2 mb-1 text-xs text-gray-500">
-                      <span>◉ {aiModels.find(m => m.id === selectedModel)?.name}</span>
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-gray-100 text-gray-900'
+                  }`}>
+                    {msg.isLoading ? (
+                      <div className="flex items-center gap-2">
+                        <Loader2 size={16} className="animate-spin" />
+                        <span>{msg.content}</span>
+                      </div>
+                    ) : (
+                      <p className="text-sm">{msg.content}</p>
+                    )}
+                  </div>
+
+                  {/* 生成的圖片 */}
+                  {msg.image && (
+                    <div className="mt-2">
+                      <img
+                        src={msg.image}
+                        alt="生成的圖片"
+                        className="rounded-lg max-w-full h-auto shadow-md"
+                        style={{ maxHeight: '200px' }}
+                      />
                     </div>
                   )}
-                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                  {msg.image && (
-                    <img
-                      src={msg.image}
-                      alt="生成的圖片"
-                      className="mt-2 rounded-lg max-w-full"
-                    />
-                  )}
+
+                  {/* 時間戳記 */}
+                  <p className={`text-xs text-gray-400 mt-1 ${msg.role === 'user' ? 'text-right' : ''}`}>
+                    {msg.timestamp.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}
+                  </p>
                 </div>
               </div>
             ))}
-            <div ref={messagesEndRef} />
           </div>
         )}
       </div>
@@ -340,20 +408,34 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
           </div>
 
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => setThinkingMode('thinking')}
-              className={`p-2 rounded-lg ${thinkingMode === 'thinking' ? 'bg-orange-100 text-orange-600' : 'hover:bg-gray-100 text-gray-500'}`}
-              title="思考模式 - 制定複雜任務並自主執行"
-            >
-              <Lightbulb size={18} />
-            </button>
-            <button
-              onClick={() => setThinkingMode('fast')}
-              className={`p-2 rounded-lg ${thinkingMode === 'fast' ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-500'}`}
-              title="快速模式 - 快速制定和執行任務"
-            >
-              <Zap size={18} />
-            </button>
+            {/* 思考模式按鈕 */}
+            <div className="relative group">
+              <button
+                onClick={() => setThinkingMode('thinking')}
+                className={`p-2 rounded-lg ${thinkingMode === 'thinking' ? 'bg-orange-100 text-orange-600' : 'hover:bg-gray-100 text-gray-500'}`}
+              >
+                <Lightbulb size={18} />
+              </button>
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                <div className="font-medium">思考模式</div>
+                <div className="text-gray-300">制定複雜任務並自主執行</div>
+                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
+              </div>
+            </div>
+            {/* 快速模式按鈕 */}
+            <div className="relative group">
+              <button
+                onClick={() => setThinkingMode('fast')}
+                className={`p-2 rounded-lg ${thinkingMode === 'fast' ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-500'}`}
+              >
+                <Zap size={18} />
+              </button>
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                <div className="font-medium">快速模式</div>
+                <div className="text-gray-300">快速制定和執行任務</div>
+                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
+              </div>
+            </div>
             <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-500" title="網頁搜尋">
               <Globe size={18} />
             </button>

@@ -43,7 +43,7 @@ export const ImageLayerComponent: React.FC<ImageLayerComponentProps> = ({
       opacity={layer.opacity}
       draggable={isDraggable}
       onClick={onClick}
-      onTap={onClick as unknown as (evt: import('konva/lib/Node').KonvaEventObject<TouchEvent>) => void}
+      onTap={onClick as any}
       onDragEnd={onDragEnd}
       onTransformEnd={onTransformEnd}
     />

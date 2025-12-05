@@ -1,15 +1,19 @@
 import { useEffect, useState, useCallback } from 'react';
 import { LovartToolbar, LovartSidebar, LovartHeader } from './components/lovart';
 import { SmartCanvas, ImageGeneratorBlock, VideoGeneratorBlock } from './components/canvas';
-import { ContextMenu, getImageContextMenuItems, OnboardingTutorial, NanoBananaProTip } from './components/ui';
+import { ContextMenu, getImageContextMenuItems, OnboardingTutorial, NanoBananaProTip, SelectionToolbar } from './components/ui';
 import { StudioPanel } from './components/studio';
 import { useCanvasStore } from './store/canvasStore';
 import {
+  aiEditImage,
+  aiOutpaint,
   aiSuperResolution,
   aiRemoveBackground,
+  aiTextReplace,
   generateImage,
 } from './services/aiService';
-import type { ImageLayer } from './types';
+import type {
+  AIModel, ImageLayer } from './types';
 
 function App() {
   const {
@@ -27,15 +31,6 @@ function App() {
     setLoading,
     selectedModel,
     currentTool,
-    copyLayer,
-    pasteLayer,
-    deleteSelectedLayer,
-    toggleLayerVisibility,
-    toggleLayerLock,
-    moveLayerUp,
-    moveLayerDown,
-    moveLayerToTop,
-    moveLayerToBottom,
   } = useCanvasStore();
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({
@@ -50,29 +45,8 @@ function App() {
   const [showImageGenerator, setShowImageGenerator] = useState(false);
   const [showVideoGenerator, setShowVideoGenerator] = useState(false);
 
-  // RWD 響應式狀態
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-
-  // 監聽視窗大小變化
-  useEffect(() => {
-    const checkMobile = () => {
-      const mobile = window.innerWidth < 768;
-      setIsMobile(mobile);
-      if (mobile) {
-        setIsSidebarOpen(false);
-        setIsToolbarCollapsed(true);
-      }
-    };
-
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
-
   // 對話歷史
-  const [chatHistory] = useState([
+  const [chatHistory, setChatHistory] = useState([
     {
       id: '1',
       title: 'I NEED A STORY BOARD F...',
@@ -82,7 +56,7 @@ function App() {
   ]);
 
   // 生成的文件列表
-  const [generatedFiles] = useState([
+  const [generatedFiles, setGeneratedFiles] = useState([
     {
       id: '1',
       name: 'Storyboard_Frame_5_Hostel',
@@ -107,17 +81,56 @@ function App() {
   const selectedLayer = layers.find((l) => l.id === selectedLayerId);
   const selectedImage = selectedLayer?.type === 'image' ? (selectedLayer as ImageLayer).src : undefined;
 
-  // AI 功能處理函數（進階功能，待後續添加後端 API）
-  const handleAIEdit = async (_prompt: string) => {
-    alert('AI 改圖功能開發中...\n此功能需要後端 API 支援');
+  // AI 功能處理函數
+  const handleAIEdit = async (prompt: string) => {
+    if (!selectedImage) return;
+    setLoading(true, 'AI 改圖中...');
+    try {
+      const results = await aiEditImage({ image: selectedImage, prompt });
+      if (results[0]) {
+        addImageLayer(results[0], 'AI 改圖結果');
+        saveToHistory('AI 改圖');
+      }
+    } catch (error) {
+      console.error('AI 改圖失敗:', error);
+      alert('AI 改圖失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleAIOutpaint = async (_direction: 'up' | 'down' | 'left' | 'right' | 'all', _prompt?: string) => {
-    alert('AI 擴圖功能開發中...\n此功能需要後端 API 支援');
+  const handleAIOutpaint = async (direction: 'up' | 'down' | 'left' | 'right' | 'all', prompt?: string) => {
+    if (!selectedImage) return;
+    setLoading(true, 'AI 擴圖中...');
+    try {
+      const results = await aiOutpaint({ image: selectedImage, direction, prompt });
+      if (results[0]) {
+        addImageLayer(results[0], 'AI 擴圖結果');
+        saveToHistory('AI 擴圖');
+      }
+    } catch (error) {
+      console.error('AI 擴圖失敗:', error);
+      alert('AI 擴圖失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleTextReplace = async (_originalText: string, _newText: string) => {
-    alert('無痕改字功能開發中...\n此功能需要後端 API 支援');
+  const handleTextReplace = async (originalText: string, newText: string) => {
+    if (!selectedImage) return;
+    setLoading(true, '無痕改字中...');
+    try {
+      const results = await aiTextReplace({ image: selectedImage, originalText, newText });
+      if (results[0]) {
+        addImageLayer(results[0], '改字結果');
+        saveToHistory('無痕改字');
+      }
+    } catch (error) {
+      console.error('改字失敗:', error);
+      alert('改字失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   // 將函數暴露給 window 供其他元件使用
@@ -127,7 +140,7 @@ function App() {
       handleAIOutpaint,
       handleTextReplace,
     };
-  }, []);
+  }, [selectedImage]);
 
   const handleAIUpscale = async (scale: 2 | 4) => {
     if (!selectedImage) return;
@@ -188,64 +201,43 @@ function App() {
 
   const contextMenuItems = getImageContextMenuItems({
     onCopy: () => {
-      copyLayer();
+      // TODO: 實現複製功能
       closeContextMenu();
     },
     onPaste: () => {
-      pasteLayer();
+      // TODO: 實現粘貼功能
       closeContextMenu();
     },
     onMoveUp: () => {
-      if (selectedLayerId) {
-        moveLayerUp(selectedLayerId);
-        saveToHistory('上移一層');
-      }
+      // TODO: 實現上移一層
       closeContextMenu();
     },
     onMoveDown: () => {
-      if (selectedLayerId) {
-        moveLayerDown(selectedLayerId);
-        saveToHistory('下移一層');
-      }
+      // TODO: 實現下移一層
       closeContextMenu();
     },
     onMoveToTop: () => {
-      if (selectedLayerId) {
-        moveLayerToTop(selectedLayerId);
-        saveToHistory('移動至頂層');
-      }
+      // TODO: 實現移動至頂層
       closeContextMenu();
     },
     onMoveToBottom: () => {
-      if (selectedLayerId) {
-        moveLayerToBottom(selectedLayerId);
-        saveToHistory('移動至底層');
-      }
+      // TODO: 實現移動至底層
       closeContextMenu();
     },
     onSendToChat: () => {
-      // 發送圖片到對話
-      if (selectedImage) {
-        alert('圖片已準備發送至對話');
-      }
+      // TODO: 實現發送至對話
       closeContextMenu();
     },
     onCreateGroup: () => {
-      alert('建立群組功能開發中...');
+      // TODO: 實現創建編組
       closeContextMenu();
     },
     onToggleVisibility: () => {
-      if (selectedLayerId) {
-        toggleLayerVisibility(selectedLayerId);
-        saveToHistory(selectedLayer?.visible ? '隱藏圖層' : '顯示圖層');
-      }
+      // TODO: 實現顯示/隱藏
       closeContextMenu();
     },
     onToggleLock: () => {
-      if (selectedLayerId) {
-        toggleLayerLock(selectedLayerId);
-        saveToHistory(selectedLayer?.locked ? '解鎖圖層' : '鎖定圖層');
-      }
+      // TODO: 實現鎖定/解鎖
       closeContextMenu();
     },
     onExportPNG: () => {
@@ -257,8 +249,7 @@ function App() {
       closeContextMenu();
     },
     onDelete: () => {
-      deleteSelectedLayer();
-      saveToHistory('刪除圖層');
+      // TODO: 實現刪除
       closeContextMenu();
     },
     isLocked: selectedLayer?.locked,
@@ -350,8 +341,13 @@ function App() {
 
   // 處理 AI 訊息
   const handleSendMessage = async (message: string) => {
+    console.log('=== handleSendMessage 開始 ===');
+    console.log('訊息:', message);
+    console.log('選擇的模型:', selectedModel);
+
     setLoading(true, '正在生成圖片...');
     try {
+      console.log('調用 generateImage...');
       const results = await generateImage({
         prompt: message,
         model: selectedModel,
@@ -360,8 +356,14 @@ function App() {
         numOutputs: 1,
       });
 
+      console.log('generateImage 返回結果:', results?.length || 0, '張圖片');
+
       if (results[0]) {
+        console.log('添加圖片到畫布, URL長度:', results[0].length);
         handleImageGenerated(results[0]);
+      } else {
+        console.warn('沒有收到圖片結果');
+        alert('生成完成但沒有收到圖片');
       }
     } catch (error) {
       console.error('生成失敗:', error);
@@ -434,38 +436,12 @@ function App() {
       <LovartHeader
         projectName={projectName}
         onProjectNameChange={(name) => setProjectName(name)}
+        onUploadImage={handleUploadImage}
       />
 
       {/* 主要內容區 */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* 手機版工具列切換按鈕 */}
-        {isMobile && (
-          <button
-            onClick={() => setIsToolbarCollapsed(!isToolbarCollapsed)}
-            className="absolute top-2 left-2 z-50 p-2 bg-white rounded-lg shadow-md"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
-          </button>
-        )}
-
-        {/* 手機版側邊欄切換按鈕 */}
-        {isMobile && (
-          <button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="absolute top-2 right-2 z-50 p-2 bg-white rounded-lg shadow-md"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-            </svg>
-          </button>
-        )}
-
+      <div className="flex-1 flex overflow-hidden">
         {/* 左側工具列 */}
-        <div className={`${isMobile && isToolbarCollapsed ? 'hidden' : ''} ${isMobile ? 'absolute left-0 top-12 z-40 bg-white shadow-lg rounded-r-lg' : ''}`}>
         <LovartToolbar
           onToolChange={(tool: string) => {
             console.log('=== App onToolChange 被呼叫 ===');
@@ -544,77 +520,10 @@ function App() {
             setShowImageGenerator(false);
           }}
         />
-        </div>
 
         {/* 中央畫布區 */}
         <div className="flex-1 relative" onContextMenu={handleContextMenu}>
-          <SmartCanvas
-            className="w-full h-full"
-            onAIUpscale={(imageUrl) => {
-              console.log('AI 放大:', imageUrl);
-              handleAIUpscale(2);
-            }}
-            onAIRemoveBackground={(imageUrl) => {
-              console.log('AI 移除背景:', imageUrl);
-              handleRemoveBackground();
-            }}
-            onAIMockup={(imageUrl) => {
-              console.log('AI Mockup:', imageUrl);
-              alert('Mockup 功能開發中...');
-            }}
-            onAIErase={(imageUrl) => {
-              console.log('AI 擦除:', imageUrl);
-              alert('擦除功能開發中...');
-            }}
-            onAIEditElements={(imageUrl) => {
-              console.log('AI 編輯元素:', imageUrl);
-              alert('編輯元素功能開發中...');
-            }}
-            onAIEditText={(imageUrl) => {
-              console.log('AI 編輯文字:', imageUrl);
-              alert('編輯文字功能開發中...');
-            }}
-            onAIExpand={(imageUrl) => {
-              console.log('AI 擴展:', imageUrl);
-              handleAIOutpaint('all');
-            }}
-            onAIImageChat={(imageUrl) => {
-              console.log('圖片交流:', imageUrl);
-              alert('圖片交流功能開發中...');
-            }}
-            onAIExtractText={(imageUrl) => {
-              console.log('提取文字:', imageUrl);
-              alert('提取文字功能開發中...');
-            }}
-            onAITranslate={(imageUrl, lang) => {
-              console.log('翻譯:', imageUrl, lang);
-              alert(`翻譯成 ${lang} 功能開發中...`);
-            }}
-            onAISaveToMemo={(imageUrl) => {
-              console.log('儲存到備忘錄:', imageUrl);
-              alert('儲存到備忘錄功能開發中...');
-            }}
-            onAIRemoveObject={(imageUrl) => {
-              console.log('移除物件:', imageUrl);
-              alert('移除物件功能開發中...');
-            }}
-            onAIImageGenerator={() => {
-              console.log('AI 圖像生成器');
-              setShowImageGenerator(true);
-            }}
-            onAIImageToAnimation={(imageUrl) => {
-              console.log('AI 圖生動畫:', imageUrl);
-              setShowVideoGenerator(true);
-            }}
-            onAIRemoveText={(imageUrl) => {
-              console.log('移除文字:', imageUrl);
-              alert('移除文字功能開發中...');
-            }}
-            onAIChangeBackground={(imageUrl) => {
-              console.log('更換背景:', imageUrl);
-              alert('更換背景功能開發中...');
-            }}
-          />
+          <SmartCanvas className="w-full h-full" />
 
           {/* 圖像生成器 */}
           {showImageGenerator && (
@@ -622,12 +531,12 @@ function App() {
               <div className="pointer-events-auto">
                 <ImageGeneratorBlock
                   isGenerating={isLoading}
-                  onGenerate={async (prompt, _model, width, height) => {
+                  onGenerate={async (prompt, model, width, height, referenceImage) => {
                     setLoading(true, '正在生成圖片...');
                     try {
                       const results = await generateImage({
                         prompt,
-                        model: selectedModel,
+                        model: model as AIModel,
                         width,
                         height,
                         numOutputs: 1,
@@ -656,7 +565,7 @@ function App() {
               <div className="pointer-events-auto">
                 <VideoGeneratorBlock
                   isGenerating={isLoading}
-                  onGenerate={async () => {
+                  onGenerate={async (prompt, model, ratio, duration, startFrame, endFrame) => {
                     setLoading(true, '正在生成影片...');
                     try {
                       // TODO: 實現影片生成 API
@@ -698,62 +607,40 @@ function App() {
         </div>
 
         {/* 右側 AI 面板 */}
-        {(!isMobile || isSidebarOpen) && (
-          <div className={`${isMobile ? 'absolute right-0 top-0 h-full z-40 shadow-lg' : ''}`}>
-            <LovartSidebar
-              onSendMessage={handleSendMessage}
-              onSelectExample={(example) => {
-                handleSendMessage(example.description);
-              }}
-              onOpenStudio={() => setShowStudioPanel(true)}
-              chatHistory={chatHistory}
-              generatedFiles={generatedFiles}
-              onNewChat={() => {
-                console.log('新建對話');
-                // 清空當前對話並開始新對話
-              }}
-              onSelectHistory={(chatId) => {
-                console.log('選擇歷史對話:', chatId);
-                // 載入歷史對話
-              }}
-              onShare={() => {
-                console.log('分享對話');
-                // 複製分享連結到剪貼板
-                navigator.clipboard.writeText(window.location.href);
-                alert('分享連結已複製到剪貼板！');
-              }}
-              onSelectFile={(fileId) => {
-                console.log('選擇文件:', fileId);
-                // 在畫布中顯示選擇的文件
-                const file = generatedFiles.find((f) => f.id === fileId);
-                if (file) {
-                  addImageLayer(file.thumbnail, file.name);
-                  saveToHistory('添加生成的文件');
-                }
-              }}
-            />
-            {/* 手機版側邊欄關閉按鈕 */}
-            {isMobile && (
-              <button
-                onClick={() => setIsSidebarOpen(false)}
-                className="absolute top-2 left-2 p-2 bg-gray-100 rounded-full hover:bg-gray-200"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* 手機版背景遮罩 */}
-        {isMobile && isSidebarOpen && (
-          <div
-            className="absolute inset-0 bg-black/30 z-30"
-            onClick={() => setIsSidebarOpen(false)}
-          />
-        )}
+        <LovartSidebar
+          onSendMessage={handleSendMessage}
+          onSelectExample={(example) => {
+            handleSendMessage(example.description);
+          }}
+          onOpenStudio={() => setShowStudioPanel(true)}
+          chatHistory={chatHistory}
+          generatedFiles={generatedFiles}
+          isGenerating={isLoading}
+          lastGeneratedImage={layers.length > 0 ? (layers[layers.length - 1] as ImageLayer)?.src : undefined}
+          onNewChat={() => {
+            console.log('新建對話');
+            // 清空當前對話並開始新對話
+          }}
+          onSelectHistory={(chatId) => {
+            console.log('選擇歷史對話:', chatId);
+            // 載入歷史對話
+          }}
+          onShare={() => {
+            console.log('分享對話');
+            // 複製分享連結到剪貼板
+            navigator.clipboard.writeText(window.location.href);
+            alert('分享連結已複製到剪貼板！');
+          }}
+          onSelectFile={(fileId) => {
+            console.log('選擇文件:', fileId);
+            // 在畫布中顯示選擇的文件
+            const file = generatedFiles.find((f) => f.id === fileId);
+            if (file) {
+              addImageLayer(file.thumbnail, file.name);
+              saveToHistory('添加生成的文件');
+            }
+          }}
+        />
       </div>
 
       {/* 智慧工作室面板 */}

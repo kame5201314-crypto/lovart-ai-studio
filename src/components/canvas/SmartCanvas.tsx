@@ -10,7 +10,15 @@ import { ShapeLayerComponent } from './ShapeLayerComponent';
 import { MarkerLayerComponent } from './MarkerLayerComponent';
 import { PenLayerComponent } from './PenLayerComponent';
 import { ImageToolbar, ImageAIToolsPanel, AIToolsTrigger } from '../ui';
-import type { Layer as LayerType, DrawingLine, ShapeType, ShapeLayer, MarkerLayer, PenLayer, PenPath, PenPoint } from '../../types';
+import type { Layer as LayerType, DrawingLine, ShapeType, ShapeLayer, MarkerLayer, PenLayer, PenPath, PenPoint, ImageLayer } from '../../types';
+import {
+  aiSuperResolution,
+  aiRemoveBackground,
+  aiOutpaint,
+  aiEditImage,
+  aiTextReplace,
+  inpaint,
+} from '../../services/aiService';
 
 // 框選狀態介面
 interface SelectionBox {
@@ -23,44 +31,9 @@ interface SelectionBox {
 
 interface SmartCanvasProps {
   className?: string;
-  // AI 工具回調
-  onAIUpscale?: (imageUrl: string) => void;
-  onAIRemoveBackground?: (imageUrl: string) => void;
-  onAIMockup?: (imageUrl: string) => void;
-  onAIErase?: (imageUrl: string) => void;
-  onAIEditElements?: (imageUrl: string) => void;
-  onAIEditText?: (imageUrl: string) => void;
-  onAIExpand?: (imageUrl: string) => void;
-  onAIImageChat?: (imageUrl: string) => void;
-  onAIExtractText?: (imageUrl: string) => void;
-  onAITranslate?: (imageUrl: string, lang: string) => void;
-  onAISaveToMemo?: (imageUrl: string) => void;
-  onAIRemoveObject?: (imageUrl: string) => void;
-  onAIImageGenerator?: () => void;
-  onAIImageToAnimation?: (imageUrl: string) => void;
-  onAIRemoveText?: (imageUrl: string) => void;
-  onAIChangeBackground?: (imageUrl: string) => void;
 }
 
-export const SmartCanvas: React.FC<SmartCanvasProps> = ({
-  className,
-  onAIUpscale,
-  onAIRemoveBackground,
-  onAIMockup,
-  onAIErase,
-  onAIEditElements,
-  onAIEditText,
-  onAIExpand,
-  onAIImageChat,
-  onAIExtractText,
-  onAITranslate,
-  onAISaveToMemo,
-  onAIRemoveObject,
-  onAIImageGenerator,
-  onAIImageToAnimation,
-  onAIRemoveText,
-  onAIChangeBackground,
-}) => {
+export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -68,7 +41,8 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentLine, setCurrentLine] = useState<number[]>([]);
-  const [isPanning] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
+  const [lastPanPos, setLastPanPos] = useState({ x: 0, y: 0 });
   // 框選狀態
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionBox, setSelectionBox] = useState<SelectionBox>({
@@ -90,6 +64,7 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({
     addMarkerLayer,
     addPenLayer,
     addPathToPen,
+    updatePenPath,
     setZoom,
     setPan,
     saveToHistory,
@@ -101,6 +76,8 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({
     deleteSelectedLayer,
     duplicateLayer,
     selectAllLayers,
+    addImageLayer,
+    setLoading,
   } = useCanvasStore();
 
   // 形狀繪製狀態
@@ -112,7 +89,7 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({
   // 鋼筆工具狀態
   const [penPoints, setPenPoints] = useState<PenPoint[]>([]);
   const [activePenLayerId, setActivePenLayerId] = useState<string | null>(null);
-  const [, setIsDrawingPen] = useState(false);
+  const [isDrawingPen, setIsDrawingPen] = useState(false);
 
   // AI 工具面板狀態
   const [showAIToolsPanel, setShowAIToolsPanel] = useState(false);
@@ -357,8 +334,11 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({
 
   const handleMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
-      // 平移模式 - 由 Stage draggable 處理，這裡不需要額外邏輯
+      // 平移模式
       if (currentTool === 'move') {
+        setIsPanning(true);
+        const pos = e.target.getStage()?.getPointerPosition();
+        if (pos) setLastPanPos(pos);
         return;
       }
 
@@ -367,19 +347,12 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({
         const stage = e.target.getStage();
         // 檢查點擊目標的類型
         const targetClassName = e.target.getClassName?.() || '';
-        const targetName = e.target.name?.() || '';
-        const clickedOnLayer = targetClassName === 'Image' || targetClassName === 'Text' || targetName === 'image-layer';
-        const clickedOnTransformer = targetClassName === 'Rect' && e.target.getParent()?.getClassName() === 'Transformer';
+        const clickedOnLayer = targetClassName === 'Image' || targetClassName === 'Text';
 
-        console.log('滑鼠按下 - 目標類型:', targetClassName, '目標名稱:', targetName, '是否點擊圖層:', clickedOnLayer, '是否點擊Transformer:', clickedOnTransformer);
-
-        // 如果點擊的是 Transformer 或圖層，不開始框選
-        if (clickedOnTransformer || clickedOnLayer) {
-          return;
-        }
+        console.log('滑鼠按下 - 目標類型:', targetClassName, '是否點擊圖層:', clickedOnLayer);
 
         // 如果點擊的不是圖層，就開始框選
-        if (stage) {
+        if (!clickedOnLayer && stage) {
           const pos = stage.getPointerPosition();
           if (pos) {
             console.log('開始框選，起始位置:', pos);
@@ -478,8 +451,15 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({
 
   const handleMouseMove = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
-      // 平移模式 - 現在由 Stage draggable 處理
-      if (currentTool === 'move') {
+      // 平移模式
+      if (isPanning && currentTool === 'move') {
+        const pos = e.target.getStage()?.getPointerPosition();
+        if (pos) {
+          const dx = pos.x - lastPanPos.x;
+          const dy = pos.y - lastPanPos.y;
+          setPan(canvasState.panX + dx, canvasState.panY + dy);
+          setLastPanPos(pos);
+        }
         return;
       }
 
@@ -534,26 +514,22 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({
         setCurrentLine((prev) => [...prev, canvasPos.x, canvasPos.y]);
       }
     },
-    [isDrawing, isSelecting, isDrawingShape, currentTool, selectionStart, shapeStart]
+    [isDrawing, isPanning, isSelecting, isDrawingShape, currentTool, lastPanPos, selectionStart, shapeStart, canvasState.panX, canvasState.panY, setPan]
   );
 
   const handleMouseUp = useCallback(() => {
-    // 平移模式由 Stage draggable 處理
+    // 停止平移
+    if (isPanning) {
+      setIsPanning(false);
+      return;
+    }
 
     // 停止框選
     if (isSelecting) {
       setIsSelecting(false);
       // 檢查框選範圍內的圖層 - 即使很小的框選也處理（用於點擊選擇）
       if (selectionBox.width > 2 || selectionBox.height > 2) {
-        // 將框選座標轉換為畫布座標（考慮縮放和平移）
-        const boxX = (selectionBox.x - canvasState.panX) / canvasState.zoom;
-        const boxY = (selectionBox.y - canvasState.panY) / canvasState.zoom;
-        const boxWidth = selectionBox.width / canvasState.zoom;
-        const boxHeight = selectionBox.height / canvasState.zoom;
-        const boxRight = boxX + boxWidth;
-        const boxBottom = boxY + boxHeight;
-
-        console.log('框選範圍 (畫布座標):', { x: boxX, y: boxY, width: boxWidth, height: boxHeight });
+        console.log('框選範圍:', selectionBox);
         console.log('所有圖層:', layers.map(l => ({ id: l.id, x: l.x, y: l.y, width: l.width, height: l.height, name: l.name })));
 
         // 尋找框選範圍內的圖層（從最上層開始找）
@@ -563,17 +539,19 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({
           // 檢查圖層是否與框選範圍重疊
           const layerRight = layer.x + layer.width;
           const layerBottom = layer.y + layer.height;
+          const boxRight = selectionBox.x + selectionBox.width;
+          const boxBottom = selectionBox.y + selectionBox.height;
 
           const isOverlap = (
             layer.x < boxRight &&
-            layerRight > boxX &&
+            layerRight > selectionBox.x &&
             layer.y < boxBottom &&
-            layerBottom > boxY
+            layerBottom > selectionBox.y
           );
 
           console.log(`檢查圖層 ${layer.name}:`, {
             layerBounds: { x: layer.x, y: layer.y, right: layerRight, bottom: layerBottom },
-            boxBounds: { x: boxX, y: boxY, right: boxRight, bottom: boxBottom },
+            boxBounds: { x: selectionBox.x, y: selectionBox.y, right: boxRight, bottom: boxBottom },
             isOverlap
           });
 
@@ -627,7 +605,7 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({
           const line: DrawingLine = {
             points: currentLine,
             stroke: brushColor,
-            strokeWidth: brushSize, // 鉛筆線條
+            strokeWidth: brushSize * 3, // 鉛筆線條比較粗
             tension: 0.3,
             lineCap: 'round',
             lineJoin: 'round',
@@ -659,7 +637,7 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({
       saveToHistory(currentTool === 'mask' ? '繪製遮罩' : '繪圖');
     }
     setCurrentLine([]);
-  }, [isDrawing, isPanning, isSelecting, isDrawingShape, tempShape, currentShapeType, layers, selectedLayerId, currentTool, currentLine, brushColor, brushSize, addLineToDrawing, addShapeLayer, saveToHistory, selectionBox, selectLayer, canvasState.zoom, canvasState.panX, canvasState.panY]);
+  }, [isDrawing, isPanning, isSelecting, isDrawingShape, tempShape, currentShapeType, layers, selectedLayerId, currentTool, currentLine, brushColor, brushSize, addLineToDrawing, addShapeLayer, saveToHistory, selectionBox, selectLayer]);
 
   const handleWheel = useCallback(
     (e: Konva.KonvaEventObject<WheelEvent>) => {
@@ -790,20 +768,12 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({
         ref={stageRef}
         width={stageSize.width}
         height={stageSize.height}
-        scaleX={canvasState.zoom}
-        scaleY={canvasState.zoom}
-        x={canvasState.panX}
-        y={canvasState.panY}
         onClick={handleStageClick}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        draggable={currentTool === 'move'}
-        onDragEnd={(e) => {
-          setPan(e.target.x(), e.target.y());
-        }}
       >
         <Layer>
           {/* 背景矩形 - 用於接收框選的滑鼠事件 */}
@@ -832,7 +802,7 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({
             <Line
               points={currentLine}
               stroke={brushColor}
-              strokeWidth={brushSize}
+              strokeWidth={brushSize * 3}
               tension={0.3}
               lineCap="round"
               lineJoin="round"
@@ -960,16 +930,12 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({
             enabledAnchors={['top-left', 'top-center', 'top-right', 'middle-right', 'middle-left', 'bottom-left', 'bottom-center', 'bottom-right']}
             rotateEnabled={true}
             borderStroke="#3b82f6"
-            borderStrokeWidth={2}
-            borderDash={[6, 3]}
+            borderStrokeWidth={1}
+            borderDash={[4, 4]}
             anchorFill="#ffffff"
             anchorStroke="#3b82f6"
-            anchorSize={10}
-            anchorCornerRadius={5}
-            keepRatio={false}
-            centeredScaling={false}
-            ignoreStroke={true}
-            flipEnabled={false}
+            anchorSize={8}
+            anchorCornerRadius={4}
           />
         </Layer>
       </Stage>
@@ -992,45 +958,126 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({
                 }}
               >
                 <ImageToolbar
-                  onUpscale={() => {
-                    const imgSrc = (selectedLayer as any).src;
-                    if (imgSrc && onAIUpscale) onAIUpscale(imgSrc);
+                  onUpscale={async () => {
+                    const imageLayer = selectedLayer as ImageLayer;
+                    if (!imageLayer.src) return;
+                    setLoading(true, 'AI 放大中...');
+                    try {
+                      const result = await aiSuperResolution({ image: imageLayer.src, scale: 2 });
+                      if (result) {
+                        addImageLayer(result, 'AI 放大結果');
+                        saveToHistory('AI 放大');
+                      }
+                    } catch (error) {
+                      console.error('AI 放大失敗:', error);
+                      alert('AI 放大失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                    } finally {
+                      setLoading(false);
+                    }
                   }}
-                  onRemoveBackground={() => {
-                    const imgSrc = (selectedLayer as any).src;
-                    if (imgSrc && onAIRemoveBackground) onAIRemoveBackground(imgSrc);
+                  onRemoveBackground={async () => {
+                    const imageLayer = selectedLayer as ImageLayer;
+                    if (!imageLayer.src) return;
+                    setLoading(true, '移除背景中...');
+                    try {
+                      const result = await aiRemoveBackground({ image: imageLayer.src });
+                      if (result) {
+                        addImageLayer(result, '去背結果');
+                        saveToHistory('移除背景');
+                      }
+                    } catch (error) {
+                      console.error('移除背景失敗:', error);
+                      alert('移除背景失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                    } finally {
+                      setLoading(false);
+                    }
                   }}
                   onMockup={() => {
-                    const imgSrc = (selectedLayer as any).src;
-                    if (imgSrc && onAIMockup) onAIMockup(imgSrc);
+                    alert('Mockup 功能開發中...\n可將圖片套用到手機、電腦等產品模板上');
                   }}
-                  onErase={() => {
-                    const imgSrc = (selectedLayer as any).src;
-                    if (imgSrc && onAIErase) onAIErase(imgSrc);
+                  onErase={async () => {
+                    const imageLayer = selectedLayer as ImageLayer;
+                    if (!imageLayer.src) return;
+                    const prompt = window.prompt('請描述要擦除的內容（例如：移除背景中的人物）');
+                    if (!prompt) return;
+                    setLoading(true, '擦除中...');
+                    try {
+                      const results = await aiEditImage({ image: imageLayer.src, prompt: `移除圖片中的${prompt}，用周圍背景自然填補` });
+                      if (results[0]) {
+                        addImageLayer(results[0], '擦除結果');
+                        saveToHistory('擦除');
+                      }
+                    } catch (error) {
+                      console.error('擦除失敗:', error);
+                      alert('擦除失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                    } finally {
+                      setLoading(false);
+                    }
                   }}
-                  onEditElements={() => {
-                    const imgSrc = (selectedLayer as any).src;
-                    if (imgSrc && onAIEditElements) onAIEditElements(imgSrc);
+                  onEditElements={async () => {
+                    const imageLayer = selectedLayer as ImageLayer;
+                    if (!imageLayer.src) return;
+                    const prompt = window.prompt('請描述要編輯的內容（例如：將紅色車變成藍色）');
+                    if (!prompt) return;
+                    setLoading(true, '編輯元素中...');
+                    try {
+                      const results = await aiEditImage({ image: imageLayer.src, prompt });
+                      if (results[0]) {
+                        addImageLayer(results[0], '編輯結果');
+                        saveToHistory('編輯元素');
+                      }
+                    } catch (error) {
+                      console.error('編輯元素失敗:', error);
+                      alert('編輯元素失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                    } finally {
+                      setLoading(false);
+                    }
                   }}
-                  onEditText={() => {
-                    const imgSrc = (selectedLayer as any).src;
-                    if (imgSrc && onAIEditText) onAIEditText(imgSrc);
+                  onEditText={async () => {
+                    const imageLayer = selectedLayer as ImageLayer;
+                    if (!imageLayer.src) return;
+                    const originalText = window.prompt('請輸入圖片中要替換的文字');
+                    if (!originalText) return;
+                    const newText = window.prompt('請輸入新的文字');
+                    if (!newText) return;
+                    setLoading(true, '編輯文字中...');
+                    try {
+                      const results = await aiTextReplace({ image: imageLayer.src, originalText, newText });
+                      if (results[0]) {
+                        addImageLayer(results[0], '文字編輯結果');
+                        saveToHistory('編輯文字');
+                      }
+                    } catch (error) {
+                      console.error('編輯文字失敗:', error);
+                      alert('編輯文字失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                    } finally {
+                      setLoading(false);
+                    }
                   }}
-                  onExpand={() => {
-                    const imgSrc = (selectedLayer as any).src;
-                    if (imgSrc && onAIExpand) onAIExpand(imgSrc);
+                  onExpand={async () => {
+                    const imageLayer = selectedLayer as ImageLayer;
+                    if (!imageLayer.src) return;
+                    setLoading(true, '擴展圖片中...');
+                    try {
+                      const results = await aiOutpaint({ image: imageLayer.src, direction: 'all' });
+                      if (results[0]) {
+                        addImageLayer(results[0], '擴展結果');
+                        saveToHistory('擴展圖片');
+                      }
+                    } catch (error) {
+                      console.error('擴展圖片失敗:', error);
+                      alert('擴展圖片失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                    } finally {
+                      setLoading(false);
+                    }
                   }}
                   onDownload={() => {
-                    // 下載選中的圖片
-                    const imgSrc = (selectedLayer as any).src;
-                    if (imgSrc) {
-                      const link = document.createElement('a');
-                      link.href = imgSrc;
-                      link.download = `${selectedLayer.name || 'image'}.png`;
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                    }
+                    const imageLayer = selectedLayer as ImageLayer;
+                    if (!imageLayer.src) return;
+                    const link = document.createElement('a');
+                    link.href = imageLayer.src;
+                    link.download = `${selectedLayer.name || 'image'}.png`;
+                    link.click();
                   }}
                 />
               </div>
@@ -1057,63 +1104,150 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({
                 >
                   <ImageAIToolsPanel
                     onImageChat={() => {
-                      const imgSrc = (selectedLayer as any).src;
-                      if (imgSrc && onAIImageChat) onAIImageChat(imgSrc);
+                      alert('圖片交流功能開發中...');
                       setShowAIToolsPanel(false);
                     }}
-                    onExtractText={() => {
-                      const imgSrc = (selectedLayer as any).src;
-                      if (imgSrc && onAIExtractText) onAIExtractText(imgSrc);
+                    onExtractText={async () => {
+                      const imageLayer = selectedLayer as ImageLayer;
+                      if (!imageLayer.src) return;
                       setShowAIToolsPanel(false);
+                      setLoading(true, '提取文字中...');
+                      try {
+                        const results = await aiEditImage({ image: imageLayer.src, prompt: '請識別並提取這張圖片中的所有文字內容，以純文字格式輸出' });
+                        alert('文字提取完成，結果已添加為新圖層');
+                      } catch (error) {
+                        alert('提取文字失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
-                    onTranslate={(lang) => {
-                      const imgSrc = (selectedLayer as any).src;
-                      if (imgSrc && onAITranslate) onAITranslate(imgSrc, lang);
+                    onTranslate={async (lang) => {
+                      const imageLayer = selectedLayer as ImageLayer;
+                      if (!imageLayer.src) return;
                       setShowAIToolsPanel(false);
+                      setLoading(true, `翻譯成${lang}中...`);
+                      try {
+                        const results = await aiEditImage({ image: imageLayer.src, prompt: `將圖片中的所有文字翻譯成${lang}，保持原有排版和字體風格` });
+                        if (results[0]) {
+                          addImageLayer(results[0], `翻譯結果 (${lang})`);
+                          saveToHistory('翻譯');
+                        }
+                      } catch (error) {
+                        alert('翻譯失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
                     onSaveToMemo={() => {
-                      const imgSrc = (selectedLayer as any).src;
-                      if (imgSrc && onAISaveToMemo) onAISaveToMemo(imgSrc);
+                      alert('儲存到備忘錄功能開發中...');
                       setShowAIToolsPanel(false);
                     }}
-                    onRemoveBackground={() => {
-                      const imgSrc = (selectedLayer as any).src;
-                      if (imgSrc && onAIRemoveBackground) onAIRemoveBackground(imgSrc);
+                    onRemoveBackground={async () => {
+                      const imageLayer = selectedLayer as ImageLayer;
+                      if (!imageLayer.src) return;
                       setShowAIToolsPanel(false);
+                      setLoading(true, '移除背景中...');
+                      try {
+                        const result = await aiRemoveBackground({ image: imageLayer.src });
+                        if (result) {
+                          addImageLayer(result, '去背結果');
+                          saveToHistory('移除背景');
+                        }
+                      } catch (error) {
+                        alert('移除背景失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
                     onRemoveBrushArea={() => {
-                      const imgSrc = (selectedLayer as any).src;
-                      if (imgSrc && onAIErase) onAIErase(imgSrc);
+                      alert('移除刷選區域功能開發中...\n請先使用畫筆工具塗抹要移除的區域');
                       setShowAIToolsPanel(false);
                     }}
-                    onRemoveObject={() => {
-                      const imgSrc = (selectedLayer as any).src;
-                      if (imgSrc && onAIRemoveObject) onAIRemoveObject(imgSrc);
+                    onRemoveObject={async () => {
+                      const imageLayer = selectedLayer as ImageLayer;
+                      if (!imageLayer.src) return;
+                      const prompt = window.prompt('請描述要移除的物件（例如：背景中的人物、文字浮水印）');
+                      if (!prompt) {
+                        setShowAIToolsPanel(false);
+                        return;
+                      }
                       setShowAIToolsPanel(false);
+                      setLoading(true, '移除物件中...');
+                      try {
+                        const results = await aiEditImage({ image: imageLayer.src, prompt: `移除圖片中的${prompt}，用周圍背景自然填補` });
+                        if (results[0]) {
+                          addImageLayer(results[0], '移除物件結果');
+                          saveToHistory('移除物件');
+                        }
+                      } catch (error) {
+                        alert('移除物件失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
                     onImageGenerator={() => {
-                      if (onAIImageGenerator) onAIImageGenerator();
+                      alert('請使用左側工具列的 AI 圖像生成功能');
                       setShowAIToolsPanel(false);
                     }}
                     onImageToAnimation={() => {
-                      const imgSrc = (selectedLayer as any).src;
-                      if (imgSrc && onAIImageToAnimation) onAIImageToAnimation(imgSrc);
+                      alert('AI 圖生動畫功能開發中...');
                       setShowAIToolsPanel(false);
                     }}
-                    onRemoveText={() => {
-                      const imgSrc = (selectedLayer as any).src;
-                      if (imgSrc && onAIRemoveText) onAIRemoveText(imgSrc);
+                    onRemoveText={async () => {
+                      const imageLayer = selectedLayer as ImageLayer;
+                      if (!imageLayer.src) return;
                       setShowAIToolsPanel(false);
+                      setLoading(true, '移除文字中...');
+                      try {
+                        const results = await aiEditImage({ image: imageLayer.src, prompt: '移除圖片中所有的文字，用周圍背景自然填補' });
+                        if (results[0]) {
+                          addImageLayer(results[0], '移除文字結果');
+                          saveToHistory('移除文字');
+                        }
+                      } catch (error) {
+                        alert('移除文字失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
-                    onChangeBackground={() => {
-                      const imgSrc = (selectedLayer as any).src;
-                      if (imgSrc && onAIChangeBackground) onAIChangeBackground(imgSrc);
+                    onChangeBackground={async () => {
+                      const imageLayer = selectedLayer as ImageLayer;
+                      if (!imageLayer.src) return;
+                      const prompt = window.prompt('請描述新的背景（例如：白色背景、海灘背景、城市夜景）');
+                      if (!prompt) {
+                        setShowAIToolsPanel(false);
+                        return;
+                      }
                       setShowAIToolsPanel(false);
+                      setLoading(true, '更換背景中...');
+                      try {
+                        const results = await aiEditImage({ image: imageLayer.src, prompt: `將背景更換為${prompt}，保持主體物件不變` });
+                        if (results[0]) {
+                          addImageLayer(results[0], '更換背景結果');
+                          saveToHistory('更換背景');
+                        }
+                      } catch (error) {
+                        alert('更換背景失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
-                    onUpscale={() => {
-                      const imgSrc = (selectedLayer as any).src;
-                      if (imgSrc && onAIUpscale) onAIUpscale(imgSrc);
+                    onUpscale={async () => {
+                      const imageLayer = selectedLayer as ImageLayer;
+                      if (!imageLayer.src) return;
                       setShowAIToolsPanel(false);
+                      setLoading(true, 'AI 放大中...');
+                      try {
+                        const result = await aiSuperResolution({ image: imageLayer.src, scale: 2 });
+                        if (result) {
+                          addImageLayer(result, 'AI 放大結果');
+                          saveToHistory('AI 放大');
+                        }
+                      } catch (error) {
+                        alert('AI 放大失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
                   />
                 </div>

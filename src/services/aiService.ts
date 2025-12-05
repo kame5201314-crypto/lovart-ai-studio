@@ -4,13 +4,14 @@ import type {
   AIModelConfig,
 } from '../types';
 
-// 不再需要前端 API Key！所有請求都透過後端 API 處理
+// ==================== 安全的後端 API 調用 ====================
+// 注意：所有 API Key 都保存在 Vercel 後端，不會暴露到前端
 
 export const AI_MODELS: AIModelConfig[] = [
   {
     id: 'nano-banana',
     name: 'Nano Banana',
-    description: 'fal.ai 高品質圖片生成',
+    description: 'fal.ai 快速圖片生成',
     provider: 'fal.ai',
     capabilities: ['text-to-image'],
     maxResolution: 2048,
@@ -19,7 +20,7 @@ export const AI_MODELS: AIModelConfig[] = [
   {
     id: 'nano-banana-pro',
     name: 'Nano Banana Pro',
-    description: 'fal.ai 進階圖片生成',
+    description: 'fal.ai 進階圖片生成，支援更高解析度',
     provider: 'fal.ai',
     capabilities: ['text-to-image', 'inpainting'],
     maxResolution: 4096,
@@ -27,30 +28,39 @@ export const AI_MODELS: AIModelConfig[] = [
   },
   {
     id: 'flux-pro',
-    name: 'Flux.1 Pro',
-    description: '高品質文生圖模型，支援複雜場景',
-    provider: 'Black Forest Labs (fal.ai)',
-    capabilities: ['text-to-image', 'inpainting'],
+    name: 'Flux Pro',
+    description: 'Flux 高品質圖片生成',
+    provider: 'fal.ai',
+    capabilities: ['text-to-image'],
     maxResolution: 2048,
     available: true,
   },
   {
     id: 'flux-schnell',
-    name: 'Flux.1 Schnell',
-    description: '快速文生圖模型，適合快速預覽',
-    provider: 'Black Forest Labs (fal.ai)',
+    name: 'Flux Schnell',
+    description: 'Flux 快速圖片生成',
+    provider: 'fal.ai',
     capabilities: ['text-to-image'],
-    maxResolution: 1024,
+    maxResolution: 2048,
+    available: true,
+  },
+  {
+    id: 'gemini-flash',
+    name: 'Gemini 2.5 Flash',
+    description: 'Google Gemini 圖片生成（需要後端支援）',
+    provider: 'Google',
+    capabilities: ['text-to-image'],
+    maxResolution: 2048,
     available: true,
   },
 ];
 
-// ==================== 安全的 API 呼叫（透過後端） ====================
+// ==================== 圖片生成 API ====================
 
-/**
- * 生成圖片 - 透過後端 API
- */
 export async function generateImage(request: TextToImageRequest): Promise<string[]> {
+  console.log('=== generateImage 開始（使用後端 API） ===');
+  console.log('請求參數:', JSON.stringify(request, null, 2));
+
   try {
     const response = await fetch('/api/generate-image', {
       method: 'POST',
@@ -60,89 +70,169 @@ export async function generateImage(request: TextToImageRequest): Promise<string
       body: JSON.stringify({
         prompt: request.prompt,
         model: request.model,
-        width: request.width,
-        height: request.height,
+        width: request.width || 1024,
+        height: request.height || 1024,
         numOutputs: request.numOutputs || 1,
       }),
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || '圖片生成失敗');
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `API 錯誤: ${response.status}`);
     }
 
     const data = await response.json();
+    console.log('生成結果:', data);
+
+    if (!data.images || data.images.length === 0) {
+      throw new Error('未收到圖片結果');
+    }
+
     return data.images;
   } catch (error) {
-    console.error('generateImage 錯誤:', error);
+    console.error('圖片生成錯誤:', error);
     throw error;
   }
 }
 
-/**
- * AI 超清（圖片放大）- 透過後端 API
- */
+// ==================== 圖片超清 API ====================
+
 export interface AISuperResolutionRequest {
   image: string;
   scale?: 2 | 4;
 }
 
 export async function aiSuperResolution(request: AISuperResolutionRequest): Promise<string> {
+  console.log('=== aiSuperResolution 開始（使用後端 API） ===');
+
   try {
+    // 處理 base64 圖片 - 上傳並獲取 URL
+    let imageUrl = request.image;
+    if (request.image.startsWith('data:')) {
+      // 將 base64 轉換為 blob 並上傳
+      const response = await fetch(request.image);
+      const blob = await response.blob();
+      const formData = new FormData();
+      formData.append('file', blob, 'image.png');
+
+      // 使用免費圖床服務
+      const uploadResponse = await fetch('https://api.imgbb.com/1/upload?key=demo', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (uploadResponse.ok) {
+        const uploadData = await uploadResponse.json();
+        imageUrl = uploadData.data?.url || request.image;
+      }
+    }
+
     const response = await fetch('/api/upscale-image', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        image: request.image,
+        image: imageUrl,
         scale: request.scale || 2,
       }),
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || '圖片放大失敗');
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `API 錯誤: ${response.status}`);
     }
 
     const data = await response.json();
+    console.log('超清結果:', data);
+
+    if (!data.image) {
+      throw new Error('未收到超清結果');
+    }
+
     return data.image;
   } catch (error) {
-    console.error('aiSuperResolution 錯誤:', error);
+    console.error('圖片超清錯誤:', error);
     throw error;
   }
 }
 
-/**
- * AI 去背 - 透過後端 API
- */
+// ==================== 去背 API ====================
+
 export interface AIRemoveBackgroundRequest {
   image: string;
+  mode?: 'auto' | 'portrait' | 'product';
 }
 
 export async function aiRemoveBackground(request: AIRemoveBackgroundRequest): Promise<string> {
+  console.log('=== aiRemoveBackground 開始（使用後端 API） ===');
+
   try {
+    // 處理 base64 圖片
+    let imageUrl = request.image;
+    if (request.image.startsWith('data:')) {
+      const response = await fetch(request.image);
+      const blob = await response.blob();
+      const formData = new FormData();
+      formData.append('file', blob, 'image.png');
+
+      const uploadResponse = await fetch('https://api.imgbb.com/1/upload?key=demo', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (uploadResponse.ok) {
+        const uploadData = await uploadResponse.json();
+        imageUrl = uploadData.data?.url || request.image;
+      }
+    }
+
     const response = await fetch('/api/remove-background', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        image: request.image,
+        image: imageUrl,
       }),
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || '去背失敗');
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `API 錯誤: ${response.status}`);
     }
 
     const data = await response.json();
+    console.log('去背結果:', data);
+
+    if (!data.image) {
+      throw new Error('未收到去背結果');
+    }
+
     return data.image;
   } catch (error) {
-    console.error('aiRemoveBackground 錯誤:', error);
+    console.error('去背錯誤:', error);
     throw error;
   }
+}
+
+// ==================== 兼容性匯出 ====================
+
+export const removeBackground = aiRemoveBackground;
+export const upscaleImage = aiSuperResolution;
+
+// AI 對話類型（保持向後兼容）
+export interface AIDesignChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+// AI 設計對話（功能開發中）
+export async function aiDesignChat(
+  _messages: AIDesignChatMessage[],
+  _referenceImage?: string
+): Promise<{ message: string; images?: string[] }> {
+  throw new Error('AI 設計對話功能開發中');
 }
 
 // ==================== 輔助函數 ====================
@@ -161,61 +251,4 @@ export function modelSupports(
 ): boolean {
   const config = getModelConfig(modelId);
   return config?.capabilities.includes(capability) || false;
-}
-
-// ==================== 兼容性匯出（保持向後兼容） ====================
-
-// 為了與現有程式碼相容，提供別名
-export const removeBackground = aiRemoveBackground;
-export const upscaleImage = aiSuperResolution;
-
-// AI 對話類型（保持向後兼容）
-export interface AIDesignChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
-// AI 設計對話（功能開發中）
-export async function aiDesignChat(
-  _messages: AIDesignChatMessage[],
-  _referenceImage?: string
-): Promise<string> {
-  // 此功能尚未實作後端 API
-  throw new Error('AI 設計對話功能開發中');
-}
-
-// ==================== 本地備用功能（不需要 API Key） ====================
-
-/**
- * 使用 Pollinations.ai 免費生成（僅作為備用）
- */
-export async function generateWithPollinations(
-  prompt: string,
-  width: number = 1024,
-  height: number = 1024
-): Promise<string[]> {
-  const encodedPrompt = encodeURIComponent(prompt);
-  const seed = Math.floor(Math.random() * 1000000);
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&seed=${seed}&nologo=true`;
-
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-
-    const timeout = setTimeout(() => {
-      reject(new Error('圖片生成超時，請重試'));
-    }, 60000);
-
-    img.onload = () => {
-      clearTimeout(timeout);
-      resolve([imageUrl]);
-    };
-
-    img.onerror = () => {
-      clearTimeout(timeout);
-      reject(new Error('圖片生成失敗，請重試'));
-    };
-
-    img.src = imageUrl;
-  });
 }

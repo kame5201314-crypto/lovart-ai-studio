@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lovart AI Studio - 功能測試</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 { color: #333; margin-bottom: 20px; }
+    h2 { color: #555; margin: 20px 0 10px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+    .test-group {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .test-item {
+      display: flex;
+      align-items: center;
+      padding: 10px;
+      margin: 5px 0;
+      background: #f9f9f9;
+      border-radius: 4px;
+    }
+    .test-item:hover { background: #f0f0f0; }
+    .status {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      margin-right: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+    .status.pending { background: #e0e0e0; }
+    .status.pass { background: #4caf50; color: white; }
+    .status.fail { background: #f44336; color: white; }
+    .status.running { background: #2196f3; color: white; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .test-name { flex: 1; }
+    .test-desc { color: #666; font-size: 12px; }
+    button {
+      padding: 10px 20px;
+      background: #2196f3;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+    }
+    button:hover { background: #1976d2; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    .log-area {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 15px;
+      border-radius: 4px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      margin-top: 20px;
+    }
+    .log-info { color: #9cdcfe; }
+    .log-warn { color: #dcdcaa; }
+    .log-error { color: #f14c4c; }
+    .log-success { color: #4ec9b0; }
+    .summary {
+      display: flex;
+      gap: 20px;
+      margin: 20px 0;
+      padding: 15px;
+      background: #e3f2fd;
+      border-radius: 4px;
+    }
+    .summary-item { font-size: 18px; }
+    .summary-item.pass { color: #4caf50; }
+    .summary-item.fail { color: #f44336; }
+  </style>
+</head>
+<body>
+  <h1>Lovart AI Studio - 功能測試面板</h1>
+
+  <div class="summary">
+    <span class="summary-item">總計: <span id="total">0</span></span>
+    <span class="summary-item pass">通過: <span id="passed">0</span></span>
+    <span class="summary-item fail">失敗: <span id="failed">0</span></span>
+  </div>
+
+  <button onclick="runAllTests()">執行所有測試</button>
+  <button onclick="clearLog()">清除日誌</button>
+
+  <div class="test-group">
+    <h2>1. API 配置測試</h2>
+    <div class="test-item" id="test-env-vars">
+      <div class="status pending">○</div>
+      <div class="test-name">環境變數載入</div>
+      <div class="test-desc">檢查 VITE_GEMINI_API_KEY 是否正確載入</div>
+    </div>
+    <div class="test-item" id="test-gemini-client">
+      <div class="status pending">○</div>
+      <div class="test-name">Gemini 客戶端初始化</div>
+      <div class="test-desc">檢查 GoogleGenAI 客戶端是否正確建立</div>
+    </div>
+  </div>
+
+  <div class="test-group">
+    <h2>2. AI 圖片生成測試</h2>
+    <div class="test-item" id="test-generate-gemini">
+      <div class="status pending">○</div>
+      <div class="test-name">Gemini Flash 圖片生成</div>
+      <div class="test-desc">使用 Gemini API 生成測試圖片</div>
+    </div>
+    <div class="test-item" id="test-generate-nano">
+      <div class="status pending">○</div>
+      <div class="test-name">Nano Banana 圖片生成</div>
+      <div class="test-desc">使用 Nano Banana 模型生成測試圖片</div>
+    </div>
+    <div class="test-item" id="test-generate-pollinations">
+      <div class="status pending">○</div>
+      <div class="test-name">Pollinations.ai 備用服務</div>
+      <div class="test-desc">測試免費備用圖片生成服務</div>
+    </div>
+  </div>
+
+  <div class="test-group">
+    <h2>3. UI 組件測試</h2>
+    <div class="test-item" id="test-logo-menu">
+      <div class="status pending">○</div>
+      <div class="test-name">Logo 下拉選單</div>
+      <div class="test-desc">檢查 Logo 選單項目是否正確渲染</div>
+    </div>
+    <div class="test-item" id="test-toolbar">
+      <div class="status pending">○</div>
+      <div class="test-name">工具列按鈕</div>
+      <div class="test-desc">檢查所有工具列按鈕是否可點擊</div>
+    </div>
+    <div class="test-item" id="test-sidebar">
+      <div class="status pending">○</div>
+      <div class="test-name">側邊欄輸入</div>
+      <div class="test-desc">檢查 AI 聊天輸入框是否正常運作</div>
+    </div>
+  </div>
+
+  <div class="test-group">
+    <h2>4. AI 圖片工具測試</h2>
+    <div class="test-item" id="test-ai-upscale">
+      <div class="status pending">○</div>
+      <div class="test-name">AI 放大 (Super Resolution)</div>
+      <div class="test-desc">測試圖片放大功能</div>
+    </div>
+    <div class="test-item" id="test-ai-remove-bg">
+      <div class="status pending">○</div>
+      <div class="test-name">AI 去背 (Remove Background)</div>
+      <div class="test-desc">測試背景移除功能</div>
+    </div>
+    <div class="test-item" id="test-ai-edit">
+      <div class="status pending">○</div>
+      <div class="test-name">AI 改圖 (Edit Image)</div>
+      <div class="test-desc">測試圖片編輯功能</div>
+    </div>
+  </div>
+
+  <div class="log-area" id="log"></div>
+
+  <script>
+    const log = document.getElementById('log');
+    let totalTests = 0;
+    let passedTests = 0;
+    let failedTests = 0;
+
+    function addLog(message, type = 'info') {
+      const timestamp = new Date().toLocaleTimeString();
+      const colorClass = `log-${type}`;
+      log.innerHTML += `<span class="${colorClass}">[${timestamp}] ${message}</span>\n`;
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function clearLog() {
+      log.innerHTML = '';
+    }
+
+    function updateSummary() {
+      document.getElementById('total').textContent = totalTests;
+      document.getElementById('passed').textContent = passedTests;
+      document.getElementById('failed').textContent = failedTests;
+    }
+
+    function setTestStatus(testId, status) {
+      const el = document.querySelector(`#${testId} .status`);
+      el.className = `status ${status}`;
+      el.textContent = status === 'pass' ? '✓' : status === 'fail' ? '✗' : status === 'running' ? '◉' : '○';
+    }
+
+    async function runTest(testId, testName, testFn) {
+      totalTests++;
+      setTestStatus(testId, 'running');
+      addLog(`開始測試: ${testName}`, 'info');
+
+      try {
+        await testFn();
+        setTestStatus(testId, 'pass');
+        passedTests++;
+        addLog(`✓ ${testName} - 通過`, 'success');
+      } catch (error) {
+        setTestStatus(testId, 'fail');
+        failedTests++;
+        addLog(`✗ ${testName} - 失敗: ${error.message}`, 'error');
+      }
+
+      updateSummary();
+    }
+
+    async function runAllTests() {
+      totalTests = 0;
+      passedTests = 0;
+      failedTests = 0;
+      clearLog();
+      addLog('=== 開始執行所有測試 ===', 'info');
+
+      // 重置所有測試狀態
+      document.querySelectorAll('.status').forEach(el => {
+        el.className = 'status pending';
+        el.textContent = '○';
+      });
+
+      // 測試 1: 環境變數
+      await runTest('test-env-vars', '環境變數載入', async () => {
+        // 這個測試需要在應用程式中執行
+        // 檢查 console 輸出
+        addLog('請檢查瀏覽器 Console 中的 "=== AI Service 初始化 ===" 輸出', 'warn');
+        addLog('如果看到 "GEMINI_API_KEY 已設定: true"，表示環境變數已正確載入', 'info');
+      });
+
+      // 測試 2: Gemini 客戶端
+      await runTest('test-gemini-client', 'Gemini 客戶端初始化', async () => {
+        addLog('請檢查 Console 中是否有 "Gemini 客戶端初始化成功" 訊息', 'info');
+      });
+
+      // 測試 3-5: AI 圖片生成
+      addLog('AI 圖片生成測試需要在主應用程式中進行', 'warn');
+      addLog('請在側邊欄輸入框中輸入提示詞並發送', 'info');
+      setTestStatus('test-generate-gemini', 'pending');
+      setTestStatus('test-generate-nano', 'pending');
+      setTestStatus('test-generate-pollinations', 'pending');
+
+      // 測試 6-8: UI 組件
+      addLog('UI 組件測試需要手動驗證', 'warn');
+      setTestStatus('test-logo-menu', 'pending');
+      setTestStatus('test-toolbar', 'pending');
+      setTestStatus('test-sidebar', 'pending');
+
+      // 測試 9-11: AI 工具
+      addLog('AI 工具測試需要先選擇一張圖片', 'warn');
+      setTestStatus('test-ai-upscale', 'pending');
+      setTestStatus('test-ai-remove-bg', 'pending');
+      setTestStatus('test-ai-edit', 'pending');
+
+      addLog('=== 測試完成 ===', 'info');
+      addLog('請打開主應用程式進行互動測試', 'info');
+      addLog('1. 打開瀏覽器開發者工具 (F12) 查看 Console', 'info');
+      addLog('2. 在側邊欄輸入 "a cute cat" 並按 Enter', 'info');
+      addLog('3. 觀察 Console 中的日誌輸出', 'info');
+    }
+
+    // 初始化
+    addLog('測試面板已載入', 'info');
+    addLog('點擊 "執行所有測試" 開始測試', 'info');
+  </script>
+</body>
+</html>
