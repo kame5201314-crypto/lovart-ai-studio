@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
 import {
-  Plus,
   Paperclip,
   AtSign,
   Lightbulb,
@@ -73,6 +72,15 @@ interface GeneratedFile {
   type: 'image' | 'video';
 }
 
+// 對話訊息
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  image?: string;
+  timestamp: Date;
+}
+
 interface LovartSidebarProps {
   onSendMessage?: (message: string, model: string) => void;
   onSelectExample?: (example: typeof exampleCards[0]) => void;
@@ -83,6 +91,9 @@ interface LovartSidebarProps {
   onSelectHistory?: (chatId: string) => void;
   onShare?: () => void;
   onSelectFile?: (fileId: string) => void;
+  messages?: ChatMessage[];
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 export const LovartSidebar: React.FC<LovartSidebarProps> = ({
@@ -95,20 +106,48 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
   onSelectHistory,
   onShare,
   onSelectFile,
+  messages = [],
+  isCollapsed = false,
 }) => {
   const { selectedModel, setSelectedModel } = useCanvasStore();
   const [message, setMessage] = useState('');
   const [showModelSelector, setShowModelSelector] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
   const [thinkingMode, setThinkingMode] = useState<'thinking' | 'fast'>('fast');
+  const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // 自動滾動到最新訊息
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  React.useEffect(() => {
+    scrollToBottom();
+  }, [localMessages, messages]);
 
   const handleSend = () => {
     if (message.trim()) {
+      // 添加用戶訊息到本地狀態
+      const userMessage: ChatMessage = {
+        id: Date.now().toString(),
+        role: 'user',
+        content: message,
+        timestamp: new Date(),
+      };
+      setLocalMessages(prev => [...prev, userMessage]);
+
       onSendMessage?.(message, selectedModel);
       setMessage('');
     }
   };
+
+  // 當收到新的 messages prop 時更新
+  React.useEffect(() => {
+    if (messages.length > 0) {
+      setLocalMessages(messages);
+    }
+  }, [messages]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -118,72 +157,117 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
   };
 
   return (
-    <div className="w-[360px] h-full flex flex-col bg-white border-l border-gray-200 relative">
+    <div className={`${isCollapsed ? 'w-0 overflow-hidden' : 'w-[360px] min-w-[300px] max-w-[400px]'} h-full flex flex-col bg-white border-l border-gray-200 relative transition-all duration-300 md:w-[360px] sm:w-full sm:absolute sm:right-0 sm:z-40`}>
       {/* 頂部工具列 */}
-      <div className="flex items-center justify-end gap-1 p-3 border-b border-gray-100 relative">
-        <ChatToolbar
-          onNewChat={onNewChat}
-          onSelectHistory={onSelectHistory}
-          onShare={onShare}
-          onSelectFile={onSelectFile}
-          chatHistory={chatHistory}
-          generatedFiles={generatedFiles}
-        />
-        <button
-          onClick={onOpenStudio}
-          className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"
-          title="智慧工作室"
-        >
-          <Camera size={18} />
-        </button>
-        <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-500" title="智慧設計師">
-          <Sparkles size={18} />
-        </button>
+      <div className="flex items-center justify-between gap-1 p-3 border-b border-gray-100 relative">
+        <span className="text-sm font-medium text-gray-700 truncate">
+          {localMessages.length > 0 ? '對話中...' : 'AI 設計師'}
+        </span>
+        <div className="flex items-center gap-1">
+          <ChatToolbar
+            onNewChat={() => {
+              setLocalMessages([]);
+              onNewChat?.();
+            }}
+            onSelectHistory={onSelectHistory}
+            onShare={onShare}
+            onSelectFile={onSelectFile}
+            chatHistory={chatHistory}
+            generatedFiles={generatedFiles}
+          />
+          <button
+            onClick={onOpenStudio}
+            className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"
+            title="智慧工作室"
+          >
+            <Camera size={18} />
+          </button>
+          <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-500" title="智慧設計師">
+            <Sparkles size={18} />
+          </button>
+        </div>
       </div>
 
       {/* 主要內容區 */}
       <div className="flex-1 overflow-y-auto p-4">
-        {/* AI 頭像和歡迎訊息 */}
-        <div className="flex flex-col items-center mb-6">
-          <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-            <span className="text-2xl">🤖</span>
-          </div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-1">Hi，我是你的 AI 設計師</h2>
-          <p className="text-sm text-gray-500">讓我們開始今天的創作吧！</p>
-        </div>
+        {localMessages.length === 0 ? (
+          <>
+            {/* AI 頭像和歡迎訊息 */}
+            <div className="flex flex-col items-center mb-6">
+              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                <span className="text-2xl">🤖</span>
+              </div>
+              <h2 className="text-lg font-semibold text-gray-900 mb-1">Hi，我是你的 AI 設計師</h2>
+              <p className="text-sm text-gray-500">讓我們開始今天的創作吧！</p>
+            </div>
 
-        {/* 範例卡片 */}
-        <div className="space-y-3">
-          {exampleCards.map((card) => (
-            <button
-              key={card.id}
-              onClick={() => onSelectExample?.(card)}
-              className="w-full bg-gray-50 hover:bg-gray-100 rounded-xl p-3 text-left transition-colors"
-            >
-              <div className="flex justify-between items-start">
-                <div className="flex-1 pr-3">
-                  <h3 className="font-medium text-gray-900 text-sm mb-1">{card.title}</h3>
-                  <p className="text-xs text-gray-500 line-clamp-2">{card.description}</p>
-                </div>
-                <div className="flex gap-1">
-                  {card.images.slice(0, 3).map((img, idx) => (
+            {/* 範例卡片 */}
+            <div className="space-y-3">
+              {exampleCards.map((card) => (
+                <button
+                  key={card.id}
+                  onClick={() => onSelectExample?.(card)}
+                  className="w-full bg-gray-50 hover:bg-gray-100 rounded-xl p-3 text-left transition-colors"
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1 pr-3">
+                      <h3 className="font-medium text-gray-900 text-sm mb-1">{card.title}</h3>
+                      <p className="text-xs text-gray-500 line-clamp-2">{card.description}</p>
+                    </div>
+                    <div className="flex gap-1">
+                      {card.images.slice(0, 2).map((img, idx) => (
+                        <img
+                          key={idx}
+                          src={img}
+                          alt=""
+                          className="w-10 h-10 rounded-lg object-cover"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* 切換更多 */}
+            <button className="w-full mt-3 py-2 text-sm text-gray-500 hover:text-gray-700 flex items-center justify-center gap-1">
+              <span className="text-xs">○</span> 切換
+            </button>
+          </>
+        ) : (
+          /* 對話訊息列表 */
+          <div className="space-y-4">
+            {localMessages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`max-w-[85%] rounded-2xl px-4 py-2 ${
+                    msg.role === 'user'
+                      ? 'bg-gray-100 text-gray-900'
+                      : 'bg-orange-50 text-gray-900'
+                  }`}
+                >
+                  {msg.role === 'assistant' && (
+                    <div className="flex items-center gap-2 mb-1 text-xs text-gray-500">
+                      <span>◉ {aiModels.find(m => m.id === selectedModel)?.name}</span>
+                    </div>
+                  )}
+                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                  {msg.image && (
                     <img
-                      key={idx}
-                      src={img}
-                      alt=""
-                      className="w-12 h-12 rounded-lg object-cover"
+                      src={msg.image}
+                      alt="生成的圖片"
+                      className="mt-2 rounded-lg max-w-full"
                     />
-                  ))}
+                  )}
                 </div>
               </div>
-            </button>
-          ))}
-        </div>
-
-        {/* 切換更多 */}
-        <button className="w-full mt-3 py-2 text-sm text-gray-500 hover:text-gray-700 flex items-center justify-center gap-1">
-          <span className="text-xs">○</span> 切換
-        </button>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+        )}
       </div>
 
       {/* 底部輸入區 */}

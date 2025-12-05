@@ -1,6 +1,6 @@
 import { Group, Line, Circle } from 'react-konva';
 import type Konva from 'konva';
-import type { PenLayer, PenPath, PenPoint } from '../../types';
+import type { PenLayer, PenPath } from '../../types';
 
 interface PenLayerComponentProps {
   layer: PenLayer;
@@ -25,35 +25,6 @@ function penPathToPoints(path: PenPath): number[] {
   }
 
   return points;
-}
-
-// 生成 SVG 路徑字串（支援貝茲曲線）
-function penPathToSVGPath(path: PenPath): string {
-  if (path.points.length === 0) return '';
-
-  let d = `M ${path.points[0].x} ${path.points[0].y}`;
-
-  for (let i = 1; i < path.points.length; i++) {
-    const prevPoint = path.points[i - 1];
-    const currPoint = path.points[i];
-
-    // 如果有控制柄，使用貝茲曲線
-    if (prevPoint.handleOut && currPoint.handleIn) {
-      d += ` C ${prevPoint.handleOut.x} ${prevPoint.handleOut.y}, ${currPoint.handleIn.x} ${currPoint.handleIn.y}, ${currPoint.x} ${currPoint.y}`;
-    } else if (prevPoint.handleOut) {
-      d += ` Q ${prevPoint.handleOut.x} ${prevPoint.handleOut.y}, ${currPoint.x} ${currPoint.y}`;
-    } else if (currPoint.handleIn) {
-      d += ` Q ${currPoint.handleIn.x} ${currPoint.handleIn.y}, ${currPoint.x} ${currPoint.y}`;
-    } else {
-      d += ` L ${currPoint.x} ${currPoint.y}`;
-    }
-  }
-
-  if (path.closed) {
-    d += ' Z';
-  }
-
-  return d;
 }
 
 export function PenLayerComponent({

@@ -46,7 +46,7 @@ export function ImageAIToolsPanel({
   onUpscale,
 }: ImageAIToolsPanelProps) {
   const [showAIEditMenu, setShowAIEditMenu] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState('中文（繁體）');
+  const [selectedLanguage] = useState('中文（繁體）');
 
   const aiEditOptions = [
     { id: 'remove-bg', label: 'AI 背景移除器', icon: <Sparkles size={16} />, onClick: onRemoveBackground },

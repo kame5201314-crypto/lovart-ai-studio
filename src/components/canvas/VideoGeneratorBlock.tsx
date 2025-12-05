@@ -29,7 +29,7 @@ interface VideoGeneratorBlockProps {
   isGenerating?: boolean;
 }
 
-export function VideoGeneratorBlock({ onGenerate, onClose, isGenerating = false }: VideoGeneratorBlockProps) {
+export function VideoGeneratorBlock({ onGenerate, isGenerating = false }: VideoGeneratorBlockProps) {
   const [prompt, setPrompt] = useState('');
   const [selectedModel, setSelectedModel] = useState(videoModels[0]);
   const [selectedRatio, setSelectedRatio] = useState(videoRatios[0]);

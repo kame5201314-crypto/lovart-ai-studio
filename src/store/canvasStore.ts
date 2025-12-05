@@ -10,7 +10,6 @@ import type {
   MarkerLayer,
   PenLayer,
   PenPath,
-  PenPoint,
   ShapeType,
   ToolType,
   AIModel,
@@ -77,6 +76,11 @@ interface CanvasStore {
   pasteLayer: () => void;
   deleteSelectedLayer: () => void;
   selectAllLayers: () => void;
+  // 圖層順序操作
+  moveLayerUp: (id: string) => void;
+  moveLayerDown: (id: string) => void;
+  moveLayerToTop: (id: string) => void;
+  moveLayerToBottom: (id: string) => void;
 }
 
 export const useCanvasStore = create<CanvasStore>((set, get) => ({
@@ -493,5 +497,73 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       set({ selectedLayerId: topLayer.id });
       console.log('已選擇圖層:', topLayer.name);
     }
+  },
+
+  // 上移一層
+  moveLayerUp: (id) => {
+    const { layers } = get();
+    const sortedLayers = [...layers].sort((a, b) => a.zIndex - b.zIndex);
+    const currentIndex = sortedLayers.findIndex(l => l.id === id);
+
+    if (currentIndex < sortedLayers.length - 1) {
+      // 與上一層交換 zIndex
+      const currentLayer = sortedLayers[currentIndex];
+      const upperLayer = sortedLayers[currentIndex + 1];
+
+      set({
+        layers: layers.map(l => {
+          if (l.id === currentLayer.id) return { ...l, zIndex: upperLayer.zIndex };
+          if (l.id === upperLayer.id) return { ...l, zIndex: currentLayer.zIndex };
+          return l;
+        }),
+      });
+    }
+  },
+
+  // 下移一層
+  moveLayerDown: (id) => {
+    const { layers } = get();
+    const sortedLayers = [...layers].sort((a, b) => a.zIndex - b.zIndex);
+    const currentIndex = sortedLayers.findIndex(l => l.id === id);
+
+    if (currentIndex > 0) {
+      // 與下一層交換 zIndex
+      const currentLayer = sortedLayers[currentIndex];
+      const lowerLayer = sortedLayers[currentIndex - 1];
+
+      set({
+        layers: layers.map(l => {
+          if (l.id === currentLayer.id) return { ...l, zIndex: lowerLayer.zIndex };
+          if (l.id === lowerLayer.id) return { ...l, zIndex: currentLayer.zIndex };
+          return l;
+        }),
+      });
+    }
+  },
+
+  // 移動至頂層
+  moveLayerToTop: (id) => {
+    const { layers } = get();
+    const maxZIndex = Math.max(...layers.map(l => l.zIndex));
+
+    set({
+      layers: layers.map(l => {
+        if (l.id === id) return { ...l, zIndex: maxZIndex + 1 };
+        return l;
+      }),
+    });
+  },
+
+  // 移動至底層
+  moveLayerToBottom: (id) => {
+    const { layers } = get();
+    const minZIndex = Math.min(...layers.map(l => l.zIndex));
+
+    set({
+      layers: layers.map(l => {
+        if (l.id === id) return { ...l, zIndex: minZIndex - 1 };
+        return l;
+      }),
+    });
   },
 }));

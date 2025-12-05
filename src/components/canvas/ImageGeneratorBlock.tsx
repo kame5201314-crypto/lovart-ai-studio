@@ -33,7 +33,7 @@ interface ImageGeneratorBlockProps {
   isGenerating?: boolean;
 }
 
-export function ImageGeneratorBlock({ onGenerate, onClose, isGenerating = false }: ImageGeneratorBlockProps) {
+export function ImageGeneratorBlock({ onGenerate, isGenerating = false }: ImageGeneratorBlockProps) {
   const [prompt, setPrompt] = useState('');
   const [selectedModel, setSelectedModel] = useState(models[0]);
   const [selectedRatio, setSelectedRatio] = useState(aspectRatios[4]); // 預設 1:1

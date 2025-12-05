@@ -23,9 +23,44 @@ interface SelectionBox {
 
 interface SmartCanvasProps {
   className?: string;
+  // AI 工具回調
+  onAIUpscale?: (imageUrl: string) => void;
+  onAIRemoveBackground?: (imageUrl: string) => void;
+  onAIMockup?: (imageUrl: string) => void;
+  onAIErase?: (imageUrl: string) => void;
+  onAIEditElements?: (imageUrl: string) => void;
+  onAIEditText?: (imageUrl: string) => void;
+  onAIExpand?: (imageUrl: string) => void;
+  onAIImageChat?: (imageUrl: string) => void;
+  onAIExtractText?: (imageUrl: string) => void;
+  onAITranslate?: (imageUrl: string, lang: string) => void;
+  onAISaveToMemo?: (imageUrl: string) => void;
+  onAIRemoveObject?: (imageUrl: string) => void;
+  onAIImageGenerator?: () => void;
+  onAIImageToAnimation?: (imageUrl: string) => void;
+  onAIRemoveText?: (imageUrl: string) => void;
+  onAIChangeBackground?: (imageUrl: string) => void;
 }
 
-export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
+export const SmartCanvas: React.FC<SmartCanvasProps> = ({
+  className,
+  onAIUpscale,
+  onAIRemoveBackground,
+  onAIMockup,
+  onAIErase,
+  onAIEditElements,
+  onAIEditText,
+  onAIExpand,
+  onAIImageChat,
+  onAIExtractText,
+  onAITranslate,
+  onAISaveToMemo,
+  onAIRemoveObject,
+  onAIImageGenerator,
+  onAIImageToAnimation,
+  onAIRemoveText,
+  onAIChangeBackground,
+}) => {
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -33,8 +68,7 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentLine, setCurrentLine] = useState<number[]>([]);
-  const [isPanning, setIsPanning] = useState(false);
-  const [lastPanPos, setLastPanPos] = useState({ x: 0, y: 0 });
+  const [isPanning] = useState(false);
   // 框選狀態
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionBox, setSelectionBox] = useState<SelectionBox>({
@@ -56,7 +90,6 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
     addMarkerLayer,
     addPenLayer,
     addPathToPen,
-    updatePenPath,
     setZoom,
     setPan,
     saveToHistory,
@@ -79,7 +112,7 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
   // 鋼筆工具狀態
   const [penPoints, setPenPoints] = useState<PenPoint[]>([]);
   const [activePenLayerId, setActivePenLayerId] = useState<string | null>(null);
-  const [isDrawingPen, setIsDrawingPen] = useState(false);
+  const [, setIsDrawingPen] = useState(false);
 
   // AI 工具面板狀態
   const [showAIToolsPanel, setShowAIToolsPanel] = useState(false);
@@ -324,11 +357,8 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
 
   const handleMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
-      // 平移模式
+      // 平移模式 - 由 Stage draggable 處理，這裡不需要額外邏輯
       if (currentTool === 'move') {
-        setIsPanning(true);
-        const pos = e.target.getStage()?.getPointerPosition();
-        if (pos) setLastPanPos(pos);
         return;
       }
 
@@ -337,12 +367,19 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
         const stage = e.target.getStage();
         // 檢查點擊目標的類型
         const targetClassName = e.target.getClassName?.() || '';
-        const clickedOnLayer = targetClassName === 'Image' || targetClassName === 'Text';
+        const targetName = e.target.name?.() || '';
+        const clickedOnLayer = targetClassName === 'Image' || targetClassName === 'Text' || targetName === 'image-layer';
+        const clickedOnTransformer = targetClassName === 'Rect' && e.target.getParent()?.getClassName() === 'Transformer';
 
-        console.log('滑鼠按下 - 目標類型:', targetClassName, '是否點擊圖層:', clickedOnLayer);
+        console.log('滑鼠按下 - 目標類型:', targetClassName, '目標名稱:', targetName, '是否點擊圖層:', clickedOnLayer, '是否點擊Transformer:', clickedOnTransformer);
+
+        // 如果點擊的是 Transformer 或圖層，不開始框選
+        if (clickedOnTransformer || clickedOnLayer) {
+          return;
+        }
 
         // 如果點擊的不是圖層，就開始框選
-        if (!clickedOnLayer && stage) {
+        if (stage) {
           const pos = stage.getPointerPosition();
           if (pos) {
             console.log('開始框選，起始位置:', pos);
@@ -441,15 +478,8 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
 
   const handleMouseMove = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
-      // 平移模式
-      if (isPanning && currentTool === 'move') {
-        const pos = e.target.getStage()?.getPointerPosition();
-        if (pos) {
-          const dx = pos.x - lastPanPos.x;
-          const dy = pos.y - lastPanPos.y;
-          setPan(canvasState.panX + dx, canvasState.panY + dy);
-          setLastPanPos(pos);
-        }
+      // 平移模式 - 現在由 Stage draggable 處理
+      if (currentTool === 'move') {
         return;
       }
 
@@ -504,22 +534,26 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
         setCurrentLine((prev) => [...prev, canvasPos.x, canvasPos.y]);
       }
     },
-    [isDrawing, isPanning, isSelecting, isDrawingShape, currentTool, lastPanPos, selectionStart, shapeStart, canvasState.panX, canvasState.panY, setPan]
+    [isDrawing, isSelecting, isDrawingShape, currentTool, selectionStart, shapeStart]
   );
 
   const handleMouseUp = useCallback(() => {
-    // 停止平移
-    if (isPanning) {
-      setIsPanning(false);
-      return;
-    }
+    // 平移模式由 Stage draggable 處理
 
     // 停止框選
     if (isSelecting) {
       setIsSelecting(false);
       // 檢查框選範圍內的圖層 - 即使很小的框選也處理（用於點擊選擇）
       if (selectionBox.width > 2 || selectionBox.height > 2) {
-        console.log('框選範圍:', selectionBox);
+        // 將框選座標轉換為畫布座標（考慮縮放和平移）
+        const boxX = (selectionBox.x - canvasState.panX) / canvasState.zoom;
+        const boxY = (selectionBox.y - canvasState.panY) / canvasState.zoom;
+        const boxWidth = selectionBox.width / canvasState.zoom;
+        const boxHeight = selectionBox.height / canvasState.zoom;
+        const boxRight = boxX + boxWidth;
+        const boxBottom = boxY + boxHeight;
+
+        console.log('框選範圍 (畫布座標):', { x: boxX, y: boxY, width: boxWidth, height: boxHeight });
         console.log('所有圖層:', layers.map(l => ({ id: l.id, x: l.x, y: l.y, width: l.width, height: l.height, name: l.name })));
 
         // 尋找框選範圍內的圖層（從最上層開始找）
@@ -529,19 +563,17 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
           // 檢查圖層是否與框選範圍重疊
           const layerRight = layer.x + layer.width;
           const layerBottom = layer.y + layer.height;
-          const boxRight = selectionBox.x + selectionBox.width;
-          const boxBottom = selectionBox.y + selectionBox.height;
 
           const isOverlap = (
             layer.x < boxRight &&
-            layerRight > selectionBox.x &&
+            layerRight > boxX &&
             layer.y < boxBottom &&
-            layerBottom > selectionBox.y
+            layerBottom > boxY
           );
 
           console.log(`檢查圖層 ${layer.name}:`, {
             layerBounds: { x: layer.x, y: layer.y, right: layerRight, bottom: layerBottom },
-            boxBounds: { x: selectionBox.x, y: selectionBox.y, right: boxRight, bottom: boxBottom },
+            boxBounds: { x: boxX, y: boxY, right: boxRight, bottom: boxBottom },
             isOverlap
           });
 
@@ -595,7 +627,7 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
           const line: DrawingLine = {
             points: currentLine,
             stroke: brushColor,
-            strokeWidth: brushSize * 3, // 鉛筆線條比較粗
+            strokeWidth: brushSize, // 鉛筆線條
             tension: 0.3,
             lineCap: 'round',
             lineJoin: 'round',
@@ -627,7 +659,7 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
       saveToHistory(currentTool === 'mask' ? '繪製遮罩' : '繪圖');
     }
     setCurrentLine([]);
-  }, [isDrawing, isPanning, isSelecting, isDrawingShape, tempShape, currentShapeType, layers, selectedLayerId, currentTool, currentLine, brushColor, brushSize, addLineToDrawing, addShapeLayer, saveToHistory, selectionBox, selectLayer]);
+  }, [isDrawing, isPanning, isSelecting, isDrawingShape, tempShape, currentShapeType, layers, selectedLayerId, currentTool, currentLine, brushColor, brushSize, addLineToDrawing, addShapeLayer, saveToHistory, selectionBox, selectLayer, canvasState.zoom, canvasState.panX, canvasState.panY]);
 
   const handleWheel = useCallback(
     (e: Konva.KonvaEventObject<WheelEvent>) => {
@@ -758,12 +790,20 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
         ref={stageRef}
         width={stageSize.width}
         height={stageSize.height}
+        scaleX={canvasState.zoom}
+        scaleY={canvasState.zoom}
+        x={canvasState.panX}
+        y={canvasState.panY}
         onClick={handleStageClick}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        draggable={currentTool === 'move'}
+        onDragEnd={(e) => {
+          setPan(e.target.x(), e.target.y());
+        }}
       >
         <Layer>
           {/* 背景矩形 - 用於接收框選的滑鼠事件 */}
@@ -792,7 +832,7 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
             <Line
               points={currentLine}
               stroke={brushColor}
-              strokeWidth={brushSize * 3}
+              strokeWidth={brushSize}
               tension={0.3}
               lineCap="round"
               lineJoin="round"
@@ -920,12 +960,16 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
             enabledAnchors={['top-left', 'top-center', 'top-right', 'middle-right', 'middle-left', 'bottom-left', 'bottom-center', 'bottom-right']}
             rotateEnabled={true}
             borderStroke="#3b82f6"
-            borderStrokeWidth={1}
-            borderDash={[4, 4]}
+            borderStrokeWidth={2}
+            borderDash={[6, 3]}
             anchorFill="#ffffff"
             anchorStroke="#3b82f6"
-            anchorSize={8}
-            anchorCornerRadius={4}
+            anchorSize={10}
+            anchorCornerRadius={5}
+            keepRatio={false}
+            centeredScaling={false}
+            ignoreStroke={true}
+            flipEnabled={false}
           />
         </Layer>
       </Stage>
@@ -948,19 +992,45 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
                 }}
               >
                 <ImageToolbar
-                  onUpscale={() => console.log('AI 圖像放大')}
-                  onRemoveBackground={() => console.log('AI 背景移除')}
-                  onMockup={() => console.log('Mockup')}
-                  onErase={() => console.log('擦除')}
-                  onEditElements={() => console.log('編輯元素')}
-                  onEditText={() => console.log('編輯文字')}
-                  onExpand={() => console.log('擴展')}
+                  onUpscale={() => {
+                    const imgSrc = (selectedLayer as any).src;
+                    if (imgSrc && onAIUpscale) onAIUpscale(imgSrc);
+                  }}
+                  onRemoveBackground={() => {
+                    const imgSrc = (selectedLayer as any).src;
+                    if (imgSrc && onAIRemoveBackground) onAIRemoveBackground(imgSrc);
+                  }}
+                  onMockup={() => {
+                    const imgSrc = (selectedLayer as any).src;
+                    if (imgSrc && onAIMockup) onAIMockup(imgSrc);
+                  }}
+                  onErase={() => {
+                    const imgSrc = (selectedLayer as any).src;
+                    if (imgSrc && onAIErase) onAIErase(imgSrc);
+                  }}
+                  onEditElements={() => {
+                    const imgSrc = (selectedLayer as any).src;
+                    if (imgSrc && onAIEditElements) onAIEditElements(imgSrc);
+                  }}
+                  onEditText={() => {
+                    const imgSrc = (selectedLayer as any).src;
+                    if (imgSrc && onAIEditText) onAIEditText(imgSrc);
+                  }}
+                  onExpand={() => {
+                    const imgSrc = (selectedLayer as any).src;
+                    if (imgSrc && onAIExpand) onAIExpand(imgSrc);
+                  }}
                   onDownload={() => {
                     // 下載選中的圖片
-                    const link = document.createElement('a');
-                    link.href = (selectedLayer as any).imageUrl;
-                    link.download = `${selectedLayer.name || 'image'}.png`;
-                    link.click();
+                    const imgSrc = (selectedLayer as any).src;
+                    if (imgSrc) {
+                      const link = document.createElement('a');
+                      link.href = imgSrc;
+                      link.download = `${selectedLayer.name || 'image'}.png`;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    }
                   }}
                 />
               </div>
@@ -987,51 +1057,62 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
                 >
                   <ImageAIToolsPanel
                     onImageChat={() => {
-                      console.log('圖片交流');
+                      const imgSrc = (selectedLayer as any).src;
+                      if (imgSrc && onAIImageChat) onAIImageChat(imgSrc);
                       setShowAIToolsPanel(false);
                     }}
                     onExtractText={() => {
-                      console.log('提取文字');
+                      const imgSrc = (selectedLayer as any).src;
+                      if (imgSrc && onAIExtractText) onAIExtractText(imgSrc);
                       setShowAIToolsPanel(false);
                     }}
                     onTranslate={(lang) => {
-                      console.log('翻譯成:', lang);
+                      const imgSrc = (selectedLayer as any).src;
+                      if (imgSrc && onAITranslate) onAITranslate(imgSrc, lang);
                       setShowAIToolsPanel(false);
                     }}
                     onSaveToMemo={() => {
-                      console.log('儲存到備忘錄');
+                      const imgSrc = (selectedLayer as any).src;
+                      if (imgSrc && onAISaveToMemo) onAISaveToMemo(imgSrc);
                       setShowAIToolsPanel(false);
                     }}
                     onRemoveBackground={() => {
-                      console.log('AI 背景移除器');
+                      const imgSrc = (selectedLayer as any).src;
+                      if (imgSrc && onAIRemoveBackground) onAIRemoveBackground(imgSrc);
                       setShowAIToolsPanel(false);
                     }}
                     onRemoveBrushArea={() => {
-                      console.log('移除刷選區域');
+                      const imgSrc = (selectedLayer as any).src;
+                      if (imgSrc && onAIErase) onAIErase(imgSrc);
                       setShowAIToolsPanel(false);
                     }}
                     onRemoveObject={() => {
-                      console.log('移除物件');
+                      const imgSrc = (selectedLayer as any).src;
+                      if (imgSrc && onAIRemoveObject) onAIRemoveObject(imgSrc);
                       setShowAIToolsPanel(false);
                     }}
                     onImageGenerator={() => {
-                      console.log('AI 圖像生成器');
+                      if (onAIImageGenerator) onAIImageGenerator();
                       setShowAIToolsPanel(false);
                     }}
                     onImageToAnimation={() => {
-                      console.log('AI 圖生動畫');
+                      const imgSrc = (selectedLayer as any).src;
+                      if (imgSrc && onAIImageToAnimation) onAIImageToAnimation(imgSrc);
                       setShowAIToolsPanel(false);
                     }}
                     onRemoveText={() => {
-                      console.log('移除文字');
+                      const imgSrc = (selectedLayer as any).src;
+                      if (imgSrc && onAIRemoveText) onAIRemoveText(imgSrc);
                       setShowAIToolsPanel(false);
                     }}
                     onChangeBackground={() => {
-                      console.log('更換背景');
+                      const imgSrc = (selectedLayer as any).src;
+                      if (imgSrc && onAIChangeBackground) onAIChangeBackground(imgSrc);
                       setShowAIToolsPanel(false);
                     }}
                     onUpscale={() => {
-                      console.log('AI 圖像放大');
+                      const imgSrc = (selectedLayer as any).src;
+                      if (imgSrc && onAIUpscale) onAIUpscale(imgSrc);
                       setShowAIToolsPanel(false);
                     }}
                   />
