@@ -25,12 +25,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: '缺少 prompt 參數' });
     }
 
-    // 優化提示詞：加上英文指令避免生成亂碼文字
-    const enhancedPrompt = `Generate a high-quality image based on the following description. Do NOT add any text, words, letters, or watermarks on the image. The image should be clean and professional.
+    // 智能檢測：用戶是否要求文字
+    const hasTextRequest = /文字|字|text|word|letter|寫|標題|title|caption|label/i.test(prompt);
 
-Description: ${prompt}
+    // 優化提示詞：除非用戶明確要求文字，否則不加任何文字
+    const enhancedPrompt = hasTextRequest
+      ? prompt  // 用戶要求文字，直接使用原始提示詞
+      : `Generate a photorealistic, high-quality image. STRICTLY NO TEXT, NO WORDS, NO LETTERS, NO CHARACTERS, NO WATERMARKS, NO CAPTIONS anywhere on the image.
 
-Important: No text overlay, no watermarks, no words on the image.`;
+Image description: ${prompt}
+
+CRITICAL: The image must be completely free of any text, letters, numbers, symbols, or written characters. Pure visual content only.`;
 
     console.log(`使用 Gemini 生成圖片，優化後提示詞: ${enhancedPrompt}`);
 
