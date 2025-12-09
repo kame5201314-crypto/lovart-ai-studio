@@ -124,11 +124,10 @@ export interface PenLayer extends BaseLayer {
   paths: PenPath[];
 }
 
-// AI 模型定義
+// AI 模型定義（Google 生態系）
 export type AIModel =
   | 'gemini-flash'
-  | 'nano-banana'
-  | 'nano-banana-pro';
+  | 'gemini-pro';
 
 export interface AIModelConfig {
   id: AIModel;

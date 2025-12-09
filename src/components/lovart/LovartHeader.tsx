@@ -88,7 +88,7 @@ export const LovartHeader: React.FC<LovartHeaderProps> = ({
           onClick={() => setShowLogoMenu(!showLogoMenu)}
           className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center hover:bg-gray-800 transition-colors"
         >
-          <span className="text-white text-sm font-bold">L</span>
+          <span className="text-white text-sm font-bold">M</span>
         </button>
 
         {/* Logo 下拉選單 */}

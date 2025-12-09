@@ -42,7 +42,6 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentLine, setCurrentLine] = useState<number[]>([]);
   const [isPanning, setIsPanning] = useState(false);
-  const [lastPanPos, setLastPanPos] = useState({ x: 0, y: 0 });
   // 框選狀態
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionBox, setSelectionBox] = useState<SelectionBox>({
@@ -94,10 +93,21 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
   // AI 工具面板狀態
   const [showAIToolsPanel, setShowAIToolsPanel] = useState(false);
 
-  // 當選中圖層變化時，關閉 AI 工具面板
+  // 擦除模式狀態
+  const [isEraseMode, setIsEraseMode] = useState(false);
+  const [eraseTargetLayerId, setEraseTargetLayerId] = useState<string | null>(null);
+  const [eraseMaskLines, setEraseMaskLines] = useState<number[][]>([]);
+
+  // 當選中圖層變化時，關閉 AI 工具面板和擦除模式
   useEffect(() => {
     setShowAIToolsPanel(false);
-  }, [selectedLayerId]);
+    // 如果選中了不同的圖層，退出擦除模式
+    if (eraseTargetLayerId && selectedLayerId !== eraseTargetLayerId) {
+      setIsEraseMode(false);
+      setEraseTargetLayerId(null);
+      setEraseMaskLines([]);
+    }
+  }, [selectedLayerId, eraseTargetLayerId]);
 
   const [initialized, setInitialized] = useState(false);
 
@@ -334,11 +344,22 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
 
   const handleMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
-      // 平移模式
+      // 擦除模式 - 繪製遮罩
+      if (isEraseMode) {
+        setIsDrawing(true);
+        const stage = e.target.getStage();
+        const pos = stage?.getPointerPosition();
+        if (pos && stage) {
+          const transform = stage.getAbsoluteTransform().copy().invert();
+          const canvasPos = transform.point(pos);
+          setCurrentLine([canvasPos.x, canvasPos.y]);
+        }
+        return;
+      }
+
+      // 平移模式 - 使用 Konva 內建的 draggable，這裡只需設定游標狀態
       if (currentTool === 'move') {
         setIsPanning(true);
-        const pos = e.target.getStage()?.getPointerPosition();
-        if (pos) setLastPanPos(pos);
         return;
       }
 
@@ -446,20 +467,25 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
         setCurrentLine([canvasPos.x, canvasPos.y]);
       }
     },
-    [currentTool, activePenLayerId, addPenLayer]
+    [currentTool, activePenLayerId, addPenLayer, isEraseMode]
   );
 
   const handleMouseMove = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
-      // 平移模式
-      if (isPanning && currentTool === 'move') {
-        const pos = e.target.getStage()?.getPointerPosition();
-        if (pos) {
-          const dx = pos.x - lastPanPos.x;
-          const dy = pos.y - lastPanPos.y;
-          setPan(canvasState.panX + dx, canvasState.panY + dy);
-          setLastPanPos(pos);
+      // 擦除模式 - 繪製遮罩
+      if (isEraseMode && isDrawing) {
+        const stage = e.target.getStage();
+        const pos = stage?.getPointerPosition();
+        if (pos && stage) {
+          const transform = stage.getAbsoluteTransform().copy().invert();
+          const canvasPos = transform.point(pos);
+          setCurrentLine((prev) => [...prev, canvasPos.x, canvasPos.y]);
         }
+        return;
+      }
+
+      // 平移模式 - 使用 Konva 內建的 draggable 處理，這裡不需要額外處理
+      if (isPanning && currentTool === 'move') {
         return;
       }
 
@@ -514,10 +540,20 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
         setCurrentLine((prev) => [...prev, canvasPos.x, canvasPos.y]);
       }
     },
-    [isDrawing, isPanning, isSelecting, isDrawingShape, currentTool, lastPanPos, selectionStart, shapeStart, canvasState.panX, canvasState.panY, setPan]
+    [isDrawing, isPanning, isSelecting, isDrawingShape, currentTool, selectionStart, shapeStart, isEraseMode]
   );
 
   const handleMouseUp = useCallback(() => {
+    // 擦除模式 - 保存遮罩線條
+    if (isEraseMode && isDrawing) {
+      setIsDrawing(false);
+      if (currentLine.length > 2) {
+        setEraseMaskLines((prev) => [...prev, currentLine]);
+      }
+      setCurrentLine([]);
+      return;
+    }
+
     // 停止平移
     if (isPanning) {
       setIsPanning(false);
@@ -637,7 +673,7 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
       saveToHistory(currentTool === 'mask' ? '繪製遮罩' : '繪圖');
     }
     setCurrentLine([]);
-  }, [isDrawing, isPanning, isSelecting, isDrawingShape, tempShape, currentShapeType, layers, selectedLayerId, currentTool, currentLine, brushColor, brushSize, addLineToDrawing, addShapeLayer, saveToHistory, selectionBox, selectLayer]);
+  }, [isDrawing, isPanning, isSelecting, isDrawingShape, tempShape, currentShapeType, layers, selectedLayerId, currentTool, currentLine, brushColor, brushSize, addLineToDrawing, addShapeLayer, saveToHistory, selectionBox, selectLayer, isEraseMode]);
 
   const handleWheel = useCallback(
     (e: Konva.KonvaEventObject<WheelEvent>) => {
@@ -736,6 +772,10 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
 
   // 根據工具設定游標樣式
   const getCursorStyle = () => {
+    // 擦除模式使用十字游標
+    if (isEraseMode) {
+      return 'crosshair';
+    }
     switch (currentTool) {
       case 'move':
         return isPanning ? 'grabbing' : 'grab';
@@ -768,12 +808,21 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
         ref={stageRef}
         width={stageSize.width}
         height={stageSize.height}
+        x={canvasState.panX}
+        y={canvasState.panY}
+        scaleX={canvasState.zoom}
+        scaleY={canvasState.zoom}
+        draggable={currentTool === 'move'}
         onClick={handleStageClick}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onDragEnd={(e) => {
+          // 使用 Konva 內建拖曳功能時更新 pan 值
+          setPan(e.target.x(), e.target.y());
+        }}
       >
         <Layer>
           {/* 背景矩形 - 用於接收框選的滑鼠事件 */}
@@ -845,6 +894,29 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
               stroke="#3b82f6"
               strokeWidth={1}
               dash={[4, 4]}
+            />
+          )}
+          {/* 擦除遮罩預覽 - 已保存的線條 */}
+          {isEraseMode && eraseMaskLines.map((line, index) => (
+            <Line
+              key={`erase-mask-${index}`}
+              points={line}
+              stroke="rgba(255, 0, 0, 0.5)"
+              strokeWidth={brushSize}
+              tension={0.5}
+              lineCap="round"
+              lineJoin="round"
+            />
+          ))}
+          {/* 擦除遮罩預覽 - 當前繪製中的線條 */}
+          {isEraseMode && isDrawing && currentLine.length > 2 && (
+            <Line
+              points={currentLine}
+              stroke="rgba(255, 0, 0, 0.5)"
+              strokeWidth={brushSize}
+              tension={0.5}
+              lineCap="round"
+              lineJoin="round"
             />
           )}
           {/* 臨時形狀預覽 */}
@@ -939,8 +1011,133 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
           />
         </Layer>
       </Stage>
+
+      {/* 擦除模式 UI 面板 */}
+      {isEraseMode && (
+        <div
+          className="absolute z-50 bg-white rounded-xl shadow-lg border border-gray-200 p-4"
+          style={{
+            top: '12px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+          }}
+        >
+          <div className="flex items-center gap-4">
+            <div className="text-sm font-medium text-gray-700">
+              擦除模式：用畫筆塗抹要擦除的區域
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">筆刷大小:</span>
+              <input
+                type="range"
+                min={5}
+                max={100}
+                value={brushSize}
+                onChange={(e) => useCanvasStore.getState().setBrushSize(parseInt(e.target.value))}
+                className="w-20 h-1 bg-gray-200 rounded-lg cursor-pointer"
+              />
+              <span className="text-xs text-gray-600 w-8">{brushSize}px</span>
+            </div>
+            <button
+              onClick={() => {
+                // 清除遮罩
+                setEraseMaskLines([]);
+              }}
+              className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              清除
+            </button>
+            <button
+              onClick={() => {
+                // 取消擦除模式
+                setIsEraseMode(false);
+                setEraseTargetLayerId(null);
+                setEraseMaskLines([]);
+              }}
+              className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              取消
+            </button>
+            <button
+              onClick={async () => {
+                // 執行擦除
+                if (eraseMaskLines.length === 0) {
+                  alert('請先用畫筆塗抹要擦除的區域');
+                  return;
+                }
+
+                const targetLayer = layers.find(l => l.id === eraseTargetLayerId) as ImageLayer;
+                if (!targetLayer?.src) return;
+
+                setLoading(true, '擦除中...');
+                try {
+                  // 創建遮罩圖片
+                  const maskCanvas = document.createElement('canvas');
+                  // 使用目標圖層的尺寸
+                  maskCanvas.width = targetLayer.width;
+                  maskCanvas.height = targetLayer.height;
+                  const ctx = maskCanvas.getContext('2d');
+                  if (!ctx) throw new Error('無法創建 canvas context');
+
+                  // 設置黑色背景（遮罩的未選區域）
+                  ctx.fillStyle = '#000000';
+                  ctx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
+
+                  // 繪製白色線條（遮罩的選中區域）
+                  ctx.strokeStyle = '#ffffff';
+                  ctx.lineWidth = brushSize;
+                  ctx.lineCap = 'round';
+                  ctx.lineJoin = 'round';
+
+                  // 計算座標轉換（從畫布座標轉換到圖層座標）
+                  const offsetX = targetLayer.x;
+                  const offsetY = targetLayer.y;
+
+                  eraseMaskLines.forEach(line => {
+                    if (line.length < 4) return;
+                    ctx.beginPath();
+                    ctx.moveTo(line[0] - offsetX, line[1] - offsetY);
+                    for (let i = 2; i < line.length; i += 2) {
+                      ctx.lineTo(line[i] - offsetX, line[i + 1] - offsetY);
+                    }
+                    ctx.stroke();
+                  });
+
+                  const maskDataUrl = maskCanvas.toDataURL('image/png');
+
+                  // 呼叫 inpaint API
+                  const result = await inpaint({
+                    image: targetLayer.src,
+                    mask: maskDataUrl,
+                    prompt: '', // 空 prompt 表示純擦除
+                  });
+
+                  if (result) {
+                    addImageLayer(result, '擦除結果');
+                    saveToHistory('擦除');
+                  }
+
+                  // 退出擦除模式
+                  setIsEraseMode(false);
+                  setEraseTargetLayerId(null);
+                  setEraseMaskLines([]);
+                } catch (error) {
+                  console.error('擦除失敗:', error);
+                  alert('擦除失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              className="px-4 py-1.5 text-sm text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors"
+            >
+              確認擦除
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 選取圖片後的 AI 工具列 */}
-      {selectedLayerId && currentTool === 'select' && (() => {
+      {selectedLayerId && currentTool === 'select' && !isEraseMode && (() => {
         const selectedLayer = layers.find(l => l.id === selectedLayerId);
         if (!selectedLayer) return null;
 
@@ -995,24 +1192,13 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
                   onMockup={() => {
                     alert('Mockup 功能開發中...\n可將圖片套用到手機、電腦等產品模板上');
                   }}
-                  onErase={async () => {
+                  onErase={() => {
+                    // 進入擦除模式
                     const imageLayer = selectedLayer as ImageLayer;
                     if (!imageLayer.src) return;
-                    const prompt = window.prompt('請描述要擦除的內容（例如：移除背景中的人物）');
-                    if (!prompt) return;
-                    setLoading(true, '擦除中...');
-                    try {
-                      const results = await aiEditImage({ image: imageLayer.src, prompt: `移除圖片中的${prompt}，用周圍背景自然填補` });
-                      if (results[0]) {
-                        addImageLayer(results[0], '擦除結果');
-                        saveToHistory('擦除');
-                      }
-                    } catch (error) {
-                      console.error('擦除失敗:', error);
-                      alert('擦除失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
-                    } finally {
-                      setLoading(false);
-                    }
+                    setIsEraseMode(true);
+                    setEraseTargetLayerId(imageLayer.id);
+                    setEraseMaskLines([]);
                   }}
                   onEditElements={async () => {
                     const imageLayer = selectedLayer as ImageLayer;

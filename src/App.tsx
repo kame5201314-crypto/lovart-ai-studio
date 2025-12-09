@@ -440,9 +440,10 @@ function App() {
       />
 
       {/* 主要內容區 */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* 左側工具列 */}
-        <LovartToolbar
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* 左側工具列 - 小螢幕隱藏 */}
+        <div className="hidden sm:block">
+          <LovartToolbar
           onToolChange={(tool: string) => {
             console.log('=== App onToolChange 被呼叫 ===');
             console.log('工具參數:', tool);
@@ -520,6 +521,7 @@ function App() {
             setShowImageGenerator(false);
           }}
         />
+        </div>
 
         {/* 中央畫布區 */}
         <div className="flex-1 relative" onContextMenu={handleContextMenu}>
@@ -606,41 +608,43 @@ function App() {
           )}
         </div>
 
-        {/* 右側 AI 面板 */}
-        <LovartSidebar
-          onSendMessage={handleSendMessage}
-          onSelectExample={(example) => {
-            handleSendMessage(example.description);
-          }}
-          onOpenStudio={() => setShowStudioPanel(true)}
-          chatHistory={chatHistory}
-          generatedFiles={generatedFiles}
-          isGenerating={isLoading}
-          lastGeneratedImage={layers.length > 0 ? (layers[layers.length - 1] as ImageLayer)?.src : undefined}
-          onNewChat={() => {
-            console.log('新建對話');
-            // 清空當前對話並開始新對話
-          }}
-          onSelectHistory={(chatId) => {
-            console.log('選擇歷史對話:', chatId);
-            // 載入歷史對話
-          }}
-          onShare={() => {
-            console.log('分享對話');
-            // 複製分享連結到剪貼板
-            navigator.clipboard.writeText(window.location.href);
-            alert('分享連結已複製到剪貼板！');
-          }}
-          onSelectFile={(fileId) => {
-            console.log('選擇文件:', fileId);
-            // 在畫布中顯示選擇的文件
-            const file = generatedFiles.find((f) => f.id === fileId);
-            if (file) {
-              addImageLayer(file.thumbnail, file.name);
-              saveToHistory('添加生成的文件');
-            }
-          }}
-        />
+        {/* 右側 AI 面板 - 小螢幕隱藏 */}
+        <div className="hidden md:block">
+          <LovartSidebar
+            onSendMessage={handleSendMessage}
+            onSelectExample={(example) => {
+              handleSendMessage(example.description);
+            }}
+            onOpenStudio={() => setShowStudioPanel(true)}
+            chatHistory={chatHistory}
+            generatedFiles={generatedFiles}
+            isGenerating={isLoading}
+            lastGeneratedImage={layers.length > 0 ? (layers[layers.length - 1] as ImageLayer)?.src : undefined}
+            onNewChat={() => {
+              console.log('新建對話');
+              // 清空當前對話並開始新對話
+            }}
+            onSelectHistory={(chatId) => {
+              console.log('選擇歷史對話:', chatId);
+              // 載入歷史對話
+            }}
+            onShare={() => {
+              console.log('分享對話');
+              // 複製分享連結到剪貼板
+              navigator.clipboard.writeText(window.location.href);
+              alert('分享連結已複製到剪貼板！');
+            }}
+            onSelectFile={(fileId) => {
+              console.log('選擇文件:', fileId);
+              // 在畫布中顯示選擇的文件
+              const file = generatedFiles.find((f) => f.id === fileId);
+              if (file) {
+                addImageLayer(file.thumbnail, file.name);
+                saveToHistory('添加生成的文件');
+              }
+            }}
+          />
+        </div>
       </div>
 
       {/* 智慧工作室面板 */}

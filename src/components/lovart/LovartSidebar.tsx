@@ -51,11 +51,10 @@ const exampleCards = [
   },
 ];
 
-// AI 模型列表
+// AI 模型列表（Google 生態系）
 const aiModels: { id: AIModel; name: string; icon: string }[] = [
   { id: 'gemini-flash', name: 'Gemini 2.5 Flash', icon: '✨' },
-  { id: 'nano-banana-pro', name: 'Nano Banana Pro', icon: '◉' },
-  { id: 'nano-banana', name: 'Nano Banana', icon: '◉' },
+  { id: 'gemini-pro', name: 'Gemini Pro（進階版）', icon: '🚀' },
 ];
 
 // 對話歷史項目
@@ -210,7 +209,7 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
   };
 
   return (
-    <div className="w-[360px] h-full flex flex-col bg-white border-l border-gray-200 relative">
+    <div className="w-full sm:w-[300px] md:w-[320px] lg:w-[360px] h-full flex flex-col bg-white border-l border-gray-200 relative">
       {/* 頂部工具列 */}
       <div className="flex items-center justify-end gap-1 p-3 border-b border-gray-100 relative">
         <ChatToolbar
@@ -371,9 +370,6 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
                   {model.name}
                 </button>
               ))}
-              <div className="px-3 py-1 text-xs text-gray-500 hover:text-gray-700 cursor-pointer">
-                ••• 更多
-              </div>
             </div>
           )}
         </div>
