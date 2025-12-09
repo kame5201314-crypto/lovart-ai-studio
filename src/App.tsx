@@ -653,11 +653,16 @@ function App() {
           {/* 拖曳調整寬度的手柄 */}
           <div
             onMouseDown={handleResizeStart}
-            className={`absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-400 transition-colors z-10 ${
-              isResizing ? 'bg-blue-500' : 'bg-transparent hover:bg-blue-300'
+            className={`absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-20 group flex items-center justify-center transition-all ${
+              isResizing ? 'bg-blue-500' : 'hover:bg-blue-400'
             }`}
-            style={{ marginLeft: -2 }}
-          />
+            style={{ marginLeft: -4 }}
+          >
+            {/* 拖曳指示器 - 三條橫線 */}
+            <div className={`flex flex-col gap-1 transition-opacity ${isResizing ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+              <div className="w-0.5 h-6 bg-white rounded-full" />
+            </div>
+          </div>
           <LovartSidebar
             onSendMessage={handleSendMessage}
             onSelectExample={(example) => {
