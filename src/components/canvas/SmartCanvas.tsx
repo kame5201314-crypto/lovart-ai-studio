@@ -9,8 +9,11 @@ import { DrawingLayerComponent } from './DrawingLayerComponent';
 import { ShapeLayerComponent } from './ShapeLayerComponent';
 import { MarkerLayerComponent } from './MarkerLayerComponent';
 import { PenLayerComponent } from './PenLayerComponent';
-import { ImageToolbar, ImageAIToolsPanel, AIToolsTrigger } from '../ui';
-import type { Layer as LayerType, DrawingLine, ShapeType, ShapeLayer, MarkerLayer, PenLayer, PenPath, PenPoint, ImageLayer } from '../../types';
+import { VideoLayerComponent } from './VideoLayerComponent';
+import { ImageToolbar, ImageAIToolsPanel, AIToolsTrigger, EditElementsPanel, BackgroundColorPicker, ContextMenu, getImageContextMenuItems, EditTextPanel, ExpandImagePanel, VideoToolbar } from '../ui';
+import { MockupVideoEditor } from '../mockup';
+import { Eraser } from 'lucide-react';
+import type { Layer as LayerType, DrawingLine, ShapeType, ShapeLayer, MarkerLayer, PenLayer, PenPath, PenPoint, ImageLayer, VideoLayer } from '../../types';
 import {
   aiSuperResolution,
   aiRemoveBackground,
@@ -77,6 +80,12 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
     selectAllLayers,
     addImageLayer,
     setLoading,
+    toggleLayerVisibility,
+    toggleLayerLock,
+    moveLayerUp,
+    moveLayerDown,
+    moveLayerToTop,
+    moveLayerToBottom,
   } = useCanvasStore();
 
   // 形狀繪製狀態
@@ -97,6 +106,25 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
   const [isEraseMode, setIsEraseMode] = useState(false);
   const [eraseTargetLayerId, setEraseTargetLayerId] = useState<string | null>(null);
   const [eraseMaskLines, setEraseMaskLines] = useState<number[][]>([]);
+
+  // 編輯元素面板狀態
+  const [showEditElementsPanel, setShowEditElementsPanel] = useState(false);
+  const [editElementsImageData, setEditElementsImageData] = useState<string>('');
+
+  // 右鍵選單狀態
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; layerId: string } | null>(null);
+
+  // 編輯文字面板狀態
+  const [showEditTextPanel, setShowEditTextPanel] = useState(false);
+  const [editTextLayerId, setEditTextLayerId] = useState<string | null>(null);
+
+  // 擴圖面板狀態
+  const [showExpandPanel, setShowExpandPanel] = useState(false);
+  const [expandLayerId, setExpandLayerId] = useState<string | null>(null);
+
+  // Mockup 編輯器狀態
+  const [showMockupEditor, setShowMockupEditor] = useState(false);
+  const [mockupImageSrc, setMockupImageSrc] = useState<string>('');
 
   // 當選中圖層變化時，關閉 AI 工具面板和擦除模式
   useEffect(() => {
@@ -312,6 +340,23 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
       }
     },
     [currentTool, selectLayer]
+  );
+
+  // 右鍵選單處理
+  const handleContextMenu = useCallback(
+    (layerId: string, e: Konva.KonvaEventObject<PointerEvent>) => {
+      e.evt.preventDefault();
+      e.cancelBubble = true;
+      // 選中該圖層
+      selectLayer(layerId);
+      // 顯示右鍵選單
+      setContextMenu({
+        x: e.evt.clientX,
+        y: e.evt.clientY,
+        layerId,
+      });
+    },
+    [selectLayer]
   );
 
   const handleDragEnd = useCallback(
@@ -714,6 +759,7 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
             onClick={(e) => handleLayerClick(layer.id, e)}
             onDragEnd={(e) => handleDragEnd(layer.id, e)}
             onTransformEnd={(e) => handleTransformEnd(layer.id, e)}
+            onContextMenu={(e) => handleContextMenu(layer.id, e)}
           />
         );
       case 'text':
@@ -763,6 +809,21 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
             showControlPoints={currentTool === 'pen' && layer.id === activePenLayerId}
           />
         );
+      case 'video':
+        return (
+          <VideoLayerComponent
+            key={layer.id}
+            layer={layer as VideoLayer}
+            isDraggable={isDraggable}
+            onClick={(e) => handleLayerClick(layer.id, e)}
+            onDragEnd={(e) => handleDragEnd(layer.id, e)}
+            onTransformEnd={(e) => handleTransformEnd(layer.id, e)}
+            onContextMenu={(e) => handleContextMenu(layer.id, e)}
+            onVideoTimeUpdate={(time) => {
+              useCanvasStore.getState().updateVideoState(layer.id, { currentTime: time });
+            }}
+          />
+        );
       default:
         return null;
     }
@@ -800,7 +861,12 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
       ref={containerRef}
       className={`relative overflow-hidden ${className}`}
       style={{
-        backgroundColor: '#ffffff',
+        backgroundColor: canvasState.backgroundColor === 'transparent' ? undefined : canvasState.backgroundColor,
+        backgroundImage: canvasState.backgroundColor === 'transparent'
+          ? 'linear-gradient(45deg, #e0e0e0 25%, transparent 25%), linear-gradient(-45deg, #e0e0e0 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e0e0e0 75%), linear-gradient(-45deg, transparent 75%, #e0e0e0 75%)'
+          : undefined,
+        backgroundSize: canvasState.backgroundColor === 'transparent' ? '20px 20px' : undefined,
+        backgroundPosition: canvasState.backgroundColor === 'transparent' ? '0 0, 0 10px, 10px -10px, -10px 0px' : undefined,
         cursor: getCursorStyle(),
       }}
     >
@@ -896,23 +962,23 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
               dash={[4, 4]}
             />
           )}
-          {/* 擦除遮罩預覽 - 已保存的線條 */}
+          {/* 擦除遮罩預覽 - 已保存的線條（紫色半透明） */}
           {isEraseMode && eraseMaskLines.map((line, index) => (
             <Line
               key={`erase-mask-${index}`}
               points={line}
-              stroke="rgba(255, 0, 0, 0.5)"
+              stroke="rgba(139, 92, 246, 0.6)"
               strokeWidth={brushSize}
               tension={0.5}
               lineCap="round"
               lineJoin="round"
             />
           ))}
-          {/* 擦除遮罩預覽 - 當前繪製中的線條 */}
+          {/* 擦除遮罩預覽 - 當前繪製中的線條（紫色半透明） */}
           {isEraseMode && isDrawing && currentLine.length > 2 && (
             <Line
               points={currentLine}
-              stroke="rgba(255, 0, 0, 0.5)"
+              stroke="rgba(139, 92, 246, 0.6)"
               strokeWidth={brushSize}
               tension={0.5}
               lineCap="round"
@@ -1015,7 +1081,7 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
       {/* 擦除模式 UI 面板 */}
       {isEraseMode && (
         <div
-          className="absolute z-50 bg-white rounded-xl shadow-lg border border-gray-200 p-4"
+          className="absolute z-50 bg-white rounded-2xl shadow-xl border border-gray-100 p-4"
           style={{
             top: '12px',
             left: '50%',
@@ -1023,43 +1089,93 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
           }}
         >
           <div className="flex items-center gap-4">
-            <div className="text-sm font-medium text-gray-700">
-              擦除模式：用畫筆塗抹要擦除的區域
-            </div>
+            {/* 標題 */}
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">筆刷大小:</span>
-              <input
-                type="range"
-                min={5}
-                max={100}
-                value={brushSize}
-                onChange={(e) => useCanvasStore.getState().setBrushSize(parseInt(e.target.value))}
-                className="w-20 h-1 bg-gray-200 rounded-lg cursor-pointer"
-              />
-              <span className="text-xs text-gray-600 w-8">{brushSize}px</span>
+              <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+                <Eraser size={18} className="text-purple-600" />
+              </div>
+              <div>
+                <div className="text-sm font-medium text-gray-800">擦除模式</div>
+                <div className="text-xs text-gray-500">塗抹要擦除的區域</div>
+              </div>
             </div>
-            <button
-              onClick={() => {
-                // 清除遮罩
-                setEraseMaskLines([]);
-              }}
-              className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              清除
-            </button>
-            <button
-              onClick={() => {
-                // 取消擦除模式
-                setIsEraseMode(false);
-                setEraseTargetLayerId(null);
-                setEraseMaskLines([]);
-              }}
-              className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              取消
-            </button>
-            <button
-              onClick={async () => {
+
+            <div className="w-px h-8 bg-gray-200" />
+
+            {/* 筆刷大小滑桿 */}
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500">筆刷大小</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min={5}
+                  max={100}
+                  value={brushSize}
+                  onChange={(e) => useCanvasStore.getState().setBrushSize(parseInt(e.target.value))}
+                  className="w-24 h-1.5 bg-gray-200 rounded-full cursor-pointer accent-purple-500"
+                />
+                <span className="text-xs font-medium text-gray-700 w-10 text-center bg-gray-100 rounded px-1.5 py-0.5">
+                  {brushSize}px
+                </span>
+              </div>
+            </div>
+
+            <div className="w-px h-8 bg-gray-200" />
+
+            {/* 操作按鈕 */}
+            <div className="flex items-center gap-2">
+              {/* 復原按鈕 */}
+              <button
+                onClick={() => {
+                  // 移除最後一條遮罩線
+                  if (eraseMaskLines.length > 0) {
+                    setEraseMaskLines(prev => prev.slice(0, -1));
+                  }
+                }}
+                disabled={eraseMaskLines.length === 0}
+                className={`px-3 py-1.5 text-sm rounded-lg transition-colors flex items-center gap-1.5 ${
+                  eraseMaskLines.length > 0
+                    ? 'text-gray-600 hover:bg-gray-100'
+                    : 'text-gray-300 cursor-not-allowed'
+                }`}
+                title="復原上一筆"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 10h10a5 5 0 015 5v2M3 10l6 6M3 10l6-6" />
+                </svg>
+                復原
+              </button>
+
+              {/* 清除全部 */}
+              <button
+                onClick={() => {
+                  setEraseMaskLines([]);
+                }}
+                disabled={eraseMaskLines.length === 0}
+                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                  eraseMaskLines.length > 0
+                    ? 'text-gray-600 hover:bg-gray-100'
+                    : 'text-gray-300 cursor-not-allowed'
+                }`}
+              >
+                清除全部
+              </button>
+
+              {/* 取消 */}
+              <button
+                onClick={() => {
+                  setIsEraseMode(false);
+                  setEraseTargetLayerId(null);
+                  setEraseMaskLines([]);
+                }}
+                className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                取消
+              </button>
+
+              {/* 確認擦除 */}
+              <button
+                onClick={async () => {
                 // 執行擦除
                 if (eraseMaskLines.length === 0) {
                   alert('請先用畫筆塗抹要擦除的區域');
@@ -1128,10 +1244,16 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
                   setLoading(false);
                 }
               }}
-              className="px-4 py-1.5 text-sm text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors"
+              disabled={eraseMaskLines.length === 0}
+              className={`px-4 py-1.5 text-sm text-white rounded-lg transition-colors ${
+                eraseMaskLines.length > 0
+                  ? 'bg-purple-500 hover:bg-purple-600'
+                  : 'bg-gray-300 cursor-not-allowed'
+              }`}
             >
               確認擦除
             </button>
+            </div>
           </div>
         </div>
       )}
@@ -1155,15 +1277,17 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
                 }}
               >
                 <ImageToolbar
-                  onUpscale={async () => {
+                  imageWidth={selectedLayer.width}
+                  imageHeight={selectedLayer.height}
+                  onUpscale={async (scale: number) => {
                     const imageLayer = selectedLayer as ImageLayer;
                     if (!imageLayer.src) return;
-                    setLoading(true, 'AI 放大中...');
+                    setLoading(true, `AI ${scale}倍放大中...`);
                     try {
-                      const result = await aiSuperResolution({ image: imageLayer.src, scale: 2 });
+                      const result = await aiSuperResolution({ image: imageLayer.src, scale: scale as 2 | 4 });
                       if (result) {
-                        addImageLayer(result, 'AI 放大結果');
-                        saveToHistory('AI 放大');
+                        addImageLayer(result, `AI ${scale}倍放大結果`);
+                        saveToHistory(`AI ${scale}倍放大`);
                       }
                     } catch (error) {
                       console.error('AI 放大失敗:', error);
@@ -1190,7 +1314,10 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
                     }
                   }}
                   onMockup={() => {
-                    alert('Mockup 功能開發中...\n可將圖片套用到手機、電腦等產品模板上');
+                    const imageLayer = selectedLayer as ImageLayer;
+                    if (!imageLayer.src) return;
+                    setMockupImageSrc(imageLayer.src);
+                    setShowMockupEditor(true);
                   }}
                   onErase={() => {
                     // 進入擦除模式
@@ -1200,62 +1327,26 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
                     setEraseTargetLayerId(imageLayer.id);
                     setEraseMaskLines([]);
                   }}
-                  onEditElements={async () => {
+                  onEditElements={() => {
                     const imageLayer = selectedLayer as ImageLayer;
                     if (!imageLayer.src) return;
-                    const prompt = window.prompt('請描述要編輯的內容（例如：將紅色車變成藍色）');
-                    if (!prompt) return;
-                    setLoading(true, '編輯元素中...');
-                    try {
-                      const results = await aiEditImage({ image: imageLayer.src, prompt });
-                      if (results[0]) {
-                        addImageLayer(results[0], '編輯結果');
-                        saveToHistory('編輯元素');
-                      }
-                    } catch (error) {
-                      console.error('編輯元素失敗:', error);
-                      alert('編輯元素失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
-                    } finally {
-                      setLoading(false);
-                    }
+                    // 開啟編輯元素面板
+                    setEditElementsImageData(imageLayer.src);
+                    setShowEditElementsPanel(true);
                   }}
-                  onEditText={async () => {
+                  onEditText={() => {
                     const imageLayer = selectedLayer as ImageLayer;
                     if (!imageLayer.src) return;
-                    const originalText = window.prompt('請輸入圖片中要替換的文字');
-                    if (!originalText) return;
-                    const newText = window.prompt('請輸入新的文字');
-                    if (!newText) return;
-                    setLoading(true, '編輯文字中...');
-                    try {
-                      const results = await aiTextReplace({ image: imageLayer.src, originalText, newText });
-                      if (results[0]) {
-                        addImageLayer(results[0], '文字編輯結果');
-                        saveToHistory('編輯文字');
-                      }
-                    } catch (error) {
-                      console.error('編輯文字失敗:', error);
-                      alert('編輯文字失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
-                    } finally {
-                      setLoading(false);
-                    }
+                    // 開啟編輯文字面板
+                    setEditTextLayerId(imageLayer.id);
+                    setShowEditTextPanel(true);
                   }}
-                  onExpand={async () => {
+                  onExpand={() => {
                     const imageLayer = selectedLayer as ImageLayer;
                     if (!imageLayer.src) return;
-                    setLoading(true, '擴展圖片中...');
-                    try {
-                      const results = await aiOutpaint({ image: imageLayer.src, direction: 'all' });
-                      if (results[0]) {
-                        addImageLayer(results[0], '擴展結果');
-                        saveToHistory('擴展圖片');
-                      }
-                    } catch (error) {
-                      console.error('擴展圖片失敗:', error);
-                      alert('擴展圖片失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
-                    } finally {
-                      setLoading(false);
-                    }
+                    // 開啟擴圖面板
+                    setExpandLayerId(imageLayer.id);
+                    setShowExpandPanel(true);
                   }}
                   onDownload={() => {
                     const imageLayer = selectedLayer as ImageLayer;
@@ -1442,6 +1533,75 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
           );
         }
 
+        // 如果選中的是影片圖層，顯示影片工具列
+        if (selectedLayer.type === 'video') {
+          const videoLayer = selectedLayer as VideoLayer;
+          return (
+            <div
+              className="absolute z-50"
+              style={{
+                bottom: '100px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+              }}
+            >
+              <VideoToolbar
+                isPlaying={videoLayer.isPlaying}
+                currentTime={videoLayer.currentTime}
+                duration={videoLayer.duration}
+                volume={videoLayer.volume}
+                isMuted={videoLayer.muted}
+                isLooping={videoLayer.loop}
+                playbackRate={videoLayer.playbackRate}
+                onPlayPause={() => {
+                  useCanvasStore.getState().updateVideoState(videoLayer.id, {
+                    isPlaying: !videoLayer.isPlaying,
+                  });
+                }}
+                onSeek={(time) => {
+                  useCanvasStore.getState().updateVideoState(videoLayer.id, {
+                    currentTime: time,
+                  });
+                }}
+                onVolumeChange={(volume) => {
+                  useCanvasStore.getState().updateVideoState(videoLayer.id, {
+                    volume,
+                    muted: volume === 0,
+                  });
+                }}
+                onMuteToggle={() => {
+                  useCanvasStore.getState().updateVideoState(videoLayer.id, {
+                    muted: !videoLayer.muted,
+                  });
+                }}
+                onLoopToggle={() => {
+                  useCanvasStore.getState().updateVideoState(videoLayer.id, {
+                    loop: !videoLayer.loop,
+                  });
+                }}
+                onPlaybackRateChange={(rate) => {
+                  useCanvasStore.getState().updateVideoState(videoLayer.id, {
+                    playbackRate: rate,
+                  });
+                }}
+                onTrim={() => {
+                  alert('影片剪輯功能開發中...');
+                }}
+                onExport={() => {
+                  // 匯出影片
+                  const link = document.createElement('a');
+                  link.href = videoLayer.src;
+                  link.download = `${videoLayer.name || 'video'}.mp4`;
+                  link.click();
+                }}
+                onDelete={() => {
+                  deleteSelectedLayer();
+                }}
+              />
+            </div>
+          );
+        }
+
         // 非圖片圖層，顯示通用工具列
         return (
           <div
@@ -1561,29 +1721,235 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
       })()}
 
       {/* 底部工具列 */}
-      <div className="absolute bottom-4 left-4 flex items-center gap-2 bg-white rounded-lg shadow-sm px-3 py-2">
-        <button className="p-1 hover:bg-gray-100 rounded text-gray-600">
-          <span className="text-lg">⚙️</span>
-        </button>
-        <div className="flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-600 rounded text-sm">
-          <span>🔥</span>
-          <span>100</span>
+      <div className="absolute bottom-4 left-4 flex items-center gap-3">
+        {/* 背景顏色選擇器 */}
+        <BackgroundColorPicker
+          currentColor={canvasState.backgroundColor}
+          onChange={(color) => useCanvasStore.getState().setBackgroundColor(color)}
+        />
+
+        {/* 縮放控制 */}
+        <div className="flex items-center gap-2 bg-white rounded-lg shadow-sm px-3 py-2">
+          <button className="p-1 hover:bg-gray-100 rounded text-gray-600" title="設定">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
+            </svg>
+          </button>
+          <button
+            className="p-1 hover:bg-gray-100 rounded text-gray-600"
+            onClick={() => setZoom(Math.max(0.1, canvasState.zoom - 0.1))}
+          >
+            −
+          </button>
+          <span className="text-sm text-gray-600 min-w-[40px] text-center">{Math.round(canvasState.zoom * 100)}%</span>
+          <button
+            className="p-1 hover:bg-gray-100 rounded text-gray-600"
+            onClick={() => setZoom(Math.min(5, canvasState.zoom + 0.1))}
+          >
+            +
+          </button>
         </div>
-        <span className="text-gray-300">|</span>
-        <button
-          className="p-1 hover:bg-gray-100 rounded text-gray-600"
-          onClick={() => setZoom(Math.max(0.1, canvasState.zoom - 0.1))}
-        >
-          −
-        </button>
-        <span className="text-sm text-gray-600 min-w-[40px] text-center">{Math.round(canvasState.zoom * 100)}%</span>
-        <button
-          className="p-1 hover:bg-gray-100 rounded text-gray-600"
-          onClick={() => setZoom(Math.min(5, canvasState.zoom + 0.1))}
-        >
-          +
-        </button>
       </div>
+
+      {/* 編輯元素面板 */}
+      <EditElementsPanel
+        isOpen={showEditElementsPanel}
+        onClose={() => {
+          setShowEditElementsPanel(false);
+          setEditElementsImageData('');
+        }}
+        imageData={editElementsImageData}
+        onApply={(layersData) => {
+          // 將分離的圖層添加到畫布
+          layersData.forEach((layer) => {
+            if (layer.imageData) {
+              addImageLayer(layer.imageData, layer.name);
+            }
+          });
+          saveToHistory('編輯元素 - 分離圖層');
+        }}
+      />
+
+      {/* 右鍵選單 */}
+      {contextMenu && (() => {
+        const targetLayer = layers.find(l => l.id === contextMenu.layerId);
+        if (!targetLayer) return null;
+
+        return (
+          <ContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            items={getImageContextMenuItems({
+              onCopy: () => copyLayer(),
+              onPaste: () => pasteLayer(),
+              onMoveUp: () => moveLayerUp(contextMenu.layerId),
+              onMoveDown: () => moveLayerDown(contextMenu.layerId),
+              onMoveToTop: () => moveLayerToTop(contextMenu.layerId),
+              onMoveToBottom: () => moveLayerToBottom(contextMenu.layerId),
+              onSendToChat: () => {
+                // TODO: 實現發送至對話功能
+                alert('發送至對話功能開發中...');
+              },
+              onCreateGroup: () => {
+                // TODO: 實現群組功能
+                alert('群組功能開發中...');
+              },
+              onToggleVisibility: () => toggleLayerVisibility(contextMenu.layerId),
+              onToggleLock: () => toggleLayerLock(contextMenu.layerId),
+              onExportPNG: () => {
+                const imageLayer = targetLayer as ImageLayer;
+                if (imageLayer.src) {
+                  const link = document.createElement('a');
+                  link.href = imageLayer.src;
+                  link.download = `${targetLayer.name || 'image'}.png`;
+                  link.click();
+                }
+              },
+              onExportJPG: () => {
+                const imageLayer = targetLayer as ImageLayer;
+                if (imageLayer.src) {
+                  // 轉換為 JPG
+                  const img = new window.Image();
+                  img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    if (ctx) {
+                      ctx.fillStyle = '#ffffff';
+                      ctx.fillRect(0, 0, canvas.width, canvas.height);
+                      ctx.drawImage(img, 0, 0);
+                      const jpgUrl = canvas.toDataURL('image/jpeg', 0.9);
+                      const link = document.createElement('a');
+                      link.href = jpgUrl;
+                      link.download = `${targetLayer.name || 'image'}.jpg`;
+                      link.click();
+                    }
+                  };
+                  img.src = imageLayer.src;
+                }
+              },
+              onExportSVG: () => {
+                alert('SVG 匯出功能開發中...');
+              },
+              onDelete: () => deleteSelectedLayer(),
+              isLocked: targetLayer.locked,
+              isVisible: targetLayer.visible,
+            })}
+            onClose={() => setContextMenu(null)}
+          />
+        );
+      })()}
+
+      {/* 編輯文字浮動面板 */}
+      {showEditTextPanel && editTextLayerId && (() => {
+        const targetLayer = layers.find(l => l.id === editTextLayerId) as ImageLayer;
+        if (!targetLayer) return null;
+
+        return (
+          <div
+            className="absolute z-50"
+            style={{
+              top: '60px',
+              right: '20px',
+            }}
+          >
+            <EditTextPanel
+              isOpen={showEditTextPanel}
+              onClose={() => {
+                setShowEditTextPanel(false);
+                setEditTextLayerId(null);
+              }}
+              onApply={async (newText) => {
+                if (!targetLayer.src) return;
+                setLoading(true, '編輯文字中...');
+                try {
+                  const results = await aiTextReplace({
+                    image: targetLayer.src,
+                    originalText: '',
+                    newText,
+                  });
+                  if (results[0]) {
+                    addImageLayer(results[0], '文字編輯結果');
+                    saveToHistory('編輯文字');
+                  }
+                } catch (error) {
+                  console.error('編輯文字失敗:', error);
+                  alert('編輯文字失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                } finally {
+                  setLoading(false);
+                }
+              }}
+            />
+          </div>
+        );
+      })()}
+
+      {/* 擴圖浮動面板 */}
+      {showExpandPanel && expandLayerId && (() => {
+        const targetLayer = layers.find(l => l.id === expandLayerId) as ImageLayer;
+        if (!targetLayer) return null;
+
+        return (
+          <div
+            className="absolute z-50"
+            style={{
+              top: '60px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+            }}
+          >
+            <ExpandImagePanel
+              isOpen={showExpandPanel}
+              onClose={() => {
+                setShowExpandPanel(false);
+                setExpandLayerId(null);
+              }}
+              originalWidth={targetLayer.width}
+              originalHeight={targetLayer.height}
+              onApply={async (width, height, prompt) => {
+                if (!targetLayer.src) return;
+                setLoading(true, '擴展圖片中...');
+                try {
+                  const results = await aiOutpaint({
+                    image: targetLayer.src,
+                    direction: 'all',
+                    prompt,
+                  });
+                  if (results[0]) {
+                    addImageLayer(results[0], '擴展結果');
+                    saveToHistory('擴展圖片');
+                  }
+                } catch (error) {
+                  console.error('擴展圖片失敗:', error);
+                  alert('擴展圖片失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                } finally {
+                  setLoading(false);
+                }
+              }}
+            />
+          </div>
+        );
+      })()}
+
+      {/* Mockup 影片編輯器 */}
+      <MockupVideoEditor
+        isOpen={showMockupEditor}
+        onClose={() => {
+          setShowMockupEditor(false);
+          setMockupImageSrc('');
+        }}
+        videoSrc={mockupImageSrc}
+        onExport={(result) => {
+          if (result) {
+            addImageLayer(result, 'Mockup 結果');
+            saveToHistory('Mockup 生成');
+          }
+          setShowMockupEditor(false);
+          setMockupImageSrc('');
+        }}
+      />
     </div>
   );
 };

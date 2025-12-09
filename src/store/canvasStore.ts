@@ -9,6 +9,7 @@ import type {
   ShapeLayer,
   MarkerLayer,
   PenLayer,
+  VideoLayer,
   PenPath,
   ShapeType,
   ToolType,
@@ -54,6 +55,8 @@ interface CanvasStore {
   addPenLayer: () => string;
   addPathToPen: (layerId: string, path: PenPath) => void;
   updatePenPath: (layerId: string, pathIndex: number, path: PenPath) => void;
+  addVideoLayer: (src: string, thumbnail: string, duration: number, width?: number, height?: number) => string;
+  updateVideoState: (id: string, updates: Partial<Pick<VideoLayer, 'isPlaying' | 'currentTime' | 'volume' | 'muted' | 'loop' | 'playbackRate'>>) => void;
   setCanvasSize: (width: number, height: number) => void;
   setZoom: (zoom: number) => void;
   setPan: (x: number, y: number) => void;
@@ -365,6 +368,43 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         }
         return layer;
       }),
+    }));
+  },
+
+  addVideoLayer: (src, thumbnail, duration, width = 640, height = 360) => {
+    const x = 100;
+    const y = 100;
+
+    return get().addLayer({
+      type: 'video',
+      name: '影片',
+      visible: true,
+      locked: false,
+      opacity: 1,
+      x,
+      y,
+      width,
+      height,
+      rotation: 0,
+      src,
+      thumbnail,
+      duration,
+      currentTime: 0,
+      isPlaying: false,
+      volume: 1,
+      muted: false,
+      loop: false,
+      playbackRate: 1,
+    } as Omit<VideoLayer, 'id' | 'zIndex'>);
+  },
+
+  updateVideoState: (id, updates) => {
+    set((state) => ({
+      layers: state.layers.map((layer) =>
+        layer.id === id && layer.type === 'video'
+          ? { ...layer, ...updates }
+          : layer
+      ),
     }));
   },
 

@@ -7,3 +7,8 @@ export { ImageToolbar } from './ImageToolbar';
 export { ChatToolbar } from './ChatToolbar';
 export { ImageAIToolsPanel, AIToolsTrigger } from './ImageAIToolsPanel';
 export { SelectionToolbar } from './SelectionToolbar';
+export { EditElementsPanel } from './EditElementsPanel';
+export { BackgroundColorPicker } from './BackgroundColorPicker';
+export { EditTextPanel } from './EditTextPanel';
+export { ExpandImagePanel } from './ExpandImagePanel';
+export { VideoToolbar } from './VideoToolbar';

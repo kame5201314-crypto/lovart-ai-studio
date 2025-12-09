@@ -1,19 +1,16 @@
 import React, { useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
+import { useCanvasStore } from '../../store/canvasStore';
 
 interface LovartCanvasProps {
-  zoom?: number;
-  onZoomChange?: (zoom: number) => void;
   children?: React.ReactNode;
 }
 
 export const LovartCanvas: React.FC<LovartCanvasProps> = ({
-  zoom = 25,
-  onZoomChange: _onZoomChange,
   children,
 }) => {
-  // _onZoomChange 預留給未來使用
-  void _onZoomChange;
+  const { canvasState, setZoom } = useCanvasStore();
+  const zoom = canvasState.zoom;
   const [showTutorial, setShowTutorial] = useState(true);
   const [tutorialStep, setTutorialStep] = useState(0);
 
@@ -126,11 +123,17 @@ export const LovartCanvas: React.FC<LovartCanvasProps> = ({
           <span>100</span>
         </div>
         <span className="text-gray-300">|</span>
-        <button className="p-1 hover:bg-gray-100 rounded text-gray-600">
+        <button
+          className="p-1 hover:bg-gray-100 rounded text-gray-600"
+          onClick={() => setZoom(Math.max(0.1, zoom - 0.1))}
+        >
           <Minus size={16} />
         </button>
-        <span className="text-sm text-gray-600 min-w-[40px] text-center">{zoom}%</span>
-        <button className="p-1 hover:bg-gray-100 rounded text-gray-600">
+        <span className="text-sm text-gray-600 min-w-[40px] text-center">{Math.round(zoom * 100)}%</span>
+        <button
+          className="p-1 hover:bg-gray-100 rounded text-gray-600"
+          onClick={() => setZoom(Math.min(5, zoom + 0.1))}
+        >
           <Plus size={16} />
         </button>
       </div>

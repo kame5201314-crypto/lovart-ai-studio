@@ -14,6 +14,8 @@ import {
   User,
   Bot,
   Loader2,
+  Image,
+  Video,
 } from 'lucide-react';
 import { useCanvasStore } from '../../store/canvasStore';
 import { ChatToolbar } from '../ui/ChatToolbar';
@@ -51,10 +53,9 @@ const exampleCards = [
   },
 ];
 
-// AI 模型列表（Google 生態系）
+// AI 模型列表（僅 Gemini API 可用）
 const aiModels: { id: AIModel; name: string; icon: string }[] = [
   { id: 'gemini-flash', name: 'Gemini 2.5 Flash', icon: '✨' },
-  { id: 'gemini-pro', name: 'Gemini Pro（進階版）', icon: '🚀' },
 ];
 
 // 對話歷史項目
@@ -95,6 +96,8 @@ interface LovartSidebarProps {
   onSelectFile?: (fileId: string) => void;
   isGenerating?: boolean;
   lastGeneratedImage?: string;
+  onUploadImage?: (file: File) => void;
+  onUploadVideo?: (file: File) => void;
 }
 
 export const LovartSidebar: React.FC<LovartSidebarProps> = ({
@@ -109,14 +112,19 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
   onSelectFile,
   isGenerating = false,
   lastGeneratedImage,
+  onUploadImage,
+  onUploadVideo,
 }) => {
   const { selectedModel, setSelectedModel } = useCanvasStore();
   const [message, setMessage] = useState('');
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [thinkingMode, setThinkingMode] = useState<'thinking' | 'fast'>('fast');
+  const [showUploadMenu, setShowUploadMenu] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   // 對話記錄狀態
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -392,12 +400,72 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
           />
         </div>
 
+        {/* 隱藏的文件上傳 input */}
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              onUploadImage?.(file);
+              e.target.value = '';
+            }
+          }}
+        />
+        <input
+          ref={videoInputRef}
+          type="file"
+          accept="video/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              onUploadVideo?.(file);
+              e.target.value = '';
+            }
+          }}
+        />
+
         {/* 底部工具列 */}
         <div className="flex items-center justify-between mt-3">
           <div className="flex items-center gap-1">
-            <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-500" title="附件">
-              <Paperclip size={18} />
-            </button>
+            {/* 附件按鈕 - 帶有上傳選單 */}
+            <div className="relative">
+              <button
+                onClick={() => setShowUploadMenu(!showUploadMenu)}
+                className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"
+                title="上傳檔案"
+              >
+                <Paperclip size={18} />
+              </button>
+
+              {showUploadMenu && (
+                <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[140px] z-50">
+                  <button
+                    onClick={() => {
+                      imageInputRef.current?.click();
+                      setShowUploadMenu(false);
+                    }}
+                    className="w-full px-3 py-2 flex items-center gap-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    <Image size={16} className="text-blue-500" />
+                    上傳圖片
+                  </button>
+                  <button
+                    onClick={() => {
+                      videoInputRef.current?.click();
+                      setShowUploadMenu(false);
+                    }}
+                    className="w-full px-3 py-2 flex items-center gap-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    <Video size={16} className="text-purple-500" />
+                    上傳影片
+                  </button>
+                </div>
+              )}
+            </div>
             <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-500" title="@引用">
               <AtSign size={18} />
             </button>

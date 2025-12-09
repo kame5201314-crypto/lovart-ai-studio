@@ -16,24 +16,15 @@ const genAI = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : nul
 // 檢查是否在生產環境
 const isProduction = import.meta.env.PROD;
 
-// Google 生態系模型配置
+// Gemini API 模型配置（僅此一個模型可用）
 export const AI_MODELS: AIModelConfig[] = [
   {
     id: 'gemini-flash',
     name: 'Gemini 2.5 Flash',
-    description: 'Google Gemini 快速圖片生成，適合日常使用',
+    description: 'Google Gemini 圖片生成，使用 gemini-2.5-flash-preview-image-generation',
     provider: 'Google',
     capabilities: ['text-to-image'],
     maxResolution: 2048,
-    available: true,
-  },
-  {
-    id: 'gemini-pro',
-    name: 'Gemini Pro（進階版）',
-    description: 'Google Gemini 進階圖片生成，更高品質',
-    provider: 'Google',
-    capabilities: ['text-to-image', 'inpainting'],
-    maxResolution: 4096,
     available: true,
   },
 ];

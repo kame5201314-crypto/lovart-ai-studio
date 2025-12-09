@@ -1,16 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { Image, ChevronDown, Check, Zap, Upload, Layers } from 'lucide-react';
 
-// 模型列表
+// 模型列表（僅 Gemini API 可用）
 const models = [
-  { id: 'nano-banana-pro', name: 'Nano Banana Pro', icon: '🍌' },
-  { id: 'nano-banana', name: 'Nano Banana', icon: '🍌' },
-  { id: 'seedream-4', name: 'Seedream 4', icon: '📊' },
-  { id: 'gpt-image', name: 'GPT Image', icon: '🌐' },
-  { id: 'midjourney', name: 'Midjourney', icon: '🎨' },
-  { id: 'seedream-3', name: 'Seedream 3', icon: '📊' },
-  { id: 'seededit', name: 'Seededit', icon: '📊' },
-  { id: 'ideogram', name: 'Ideogram', icon: '🌐' },
+  { id: 'gemini-flash', name: 'Gemini 2.5 Flash', icon: '✨' },
 ];
 
 // 比例列表

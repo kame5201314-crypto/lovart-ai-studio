@@ -11,6 +11,7 @@ interface ImageLayerComponentProps {
   onClick: (e: Konva.KonvaEventObject<MouseEvent>) => void;
   onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => void;
   onTransformEnd: (e: Konva.KonvaEventObject<Event>) => void;
+  onContextMenu?: (e: Konva.KonvaEventObject<PointerEvent>) => void;
 }
 
 export const ImageLayerComponent: React.FC<ImageLayerComponentProps> = ({
@@ -19,6 +20,7 @@ export const ImageLayerComponent: React.FC<ImageLayerComponentProps> = ({
   onClick,
   onDragEnd,
   onTransformEnd,
+  onContextMenu,
 }) => {
   // 對於 base64 圖片不需要 crossOrigin，對於 URL 圖片使用 anonymous
   const isBase64 = layer.src.startsWith('data:');
@@ -46,6 +48,7 @@ export const ImageLayerComponent: React.FC<ImageLayerComponentProps> = ({
       onTap={onClick as any}
       onDragEnd={onDragEnd}
       onTransformEnd={onTransformEnd}
+      onContextMenu={onContextMenu}
     />
   );
 };

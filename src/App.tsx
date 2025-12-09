@@ -24,6 +24,7 @@ function App() {
     isLoading,
     loadingMessage,
     addImageLayer,
+    addVideoLayer,
     addTextLayer,
     addDrawingLayer,
     selectedLayerId,
@@ -307,7 +308,7 @@ function App() {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
         const url = URL.createObjectURL(file);
-        // 創建影片縮圖
+        // 創建影片縮圖並獲取影片信息
         const video = document.createElement('video');
         video.preload = 'metadata';
         video.onloadedmetadata = () => {
@@ -333,16 +334,17 @@ function App() {
                 height = maxSize;
               }
             }
-            addImageLayer(thumbnail, `影片: ${file.name}`, width, height);
+            // 使用新的 addVideoLayer 函數
+            addVideoLayer(url, thumbnail, video.duration, width, height);
             saveToHistory('上傳影片');
+            setTool('select'); // 上傳後切換到選擇工具
           }
-          URL.revokeObjectURL(url);
         };
         video.src = url;
       }
     };
     input.click();
-  }, [addImageLayer, saveToHistory]);
+  }, [addVideoLayer, saveToHistory, setTool]);
 
   // 處理 AI 訊息
   const handleSendMessage = async (message: string) => {
@@ -695,6 +697,67 @@ function App() {
                 addImageLayer(file.thumbnail, file.name);
                 saveToHistory('添加生成的文件');
               }
+            }}
+            onUploadImage={(file) => {
+              // 從 File 讀取並添加圖片
+              const reader = new FileReader();
+              reader.onload = (e) => {
+                const src = e.target?.result as string;
+                const img = new window.Image();
+                img.onload = () => {
+                  let width = img.width;
+                  let height = img.height;
+                  const maxSize = 800;
+                  if (width > maxSize || height > maxSize) {
+                    if (width > height) {
+                      height = (height / width) * maxSize;
+                      width = maxSize;
+                    } else {
+                      width = (width / height) * maxSize;
+                      height = maxSize;
+                    }
+                  }
+                  addImageLayer(src, file.name, width, height);
+                  saveToHistory('上傳圖片');
+                  setTool('select');
+                };
+                img.src = src;
+              };
+              reader.readAsDataURL(file);
+            }}
+            onUploadVideo={(file) => {
+              const url = URL.createObjectURL(file);
+              const video = document.createElement('video');
+              video.preload = 'metadata';
+              video.onloadedmetadata = () => {
+                video.currentTime = 1;
+              };
+              video.onseeked = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.drawImage(video, 0, 0);
+                  const thumbnail = canvas.toDataURL('image/jpeg');
+                  let width = video.videoWidth;
+                  let height = video.videoHeight;
+                  const maxSize = 640;
+                  if (width > maxSize || height > maxSize) {
+                    if (width > height) {
+                      height = (height / width) * maxSize;
+                      width = maxSize;
+                    } else {
+                      width = (width / height) * maxSize;
+                      height = maxSize;
+                    }
+                  }
+                  addVideoLayer(url, thumbnail, video.duration, width, height);
+                  saveToHistory('上傳影片');
+                  setTool('select');
+                }
+              };
+              video.src = url;
             }}
           />
         </div>
