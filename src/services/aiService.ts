@@ -47,12 +47,21 @@ async function generateWithGemini(prompt: string): Promise<string[]> {
   }
 
   console.log('=== 使用 Gemini API 生成圖片 ===');
-  console.log('Prompt:', prompt);
+  console.log('原始 Prompt:', prompt);
+
+  // 優化提示詞：加上英文指令避免生成亂碼文字
+  const enhancedPrompt = `Generate a high-quality image based on the following description. Do NOT add any text, words, letters, or watermarks on the image. The image should be clean and professional.
+
+Description: ${prompt}
+
+Important: No text overlay, no watermarks, no words on the image.`;
+
+  console.log('優化後 Prompt:', enhancedPrompt);
 
   try {
     const response = await genAI.models.generateContent({
       model: 'gemini-2.5-flash-preview-image-generation',
-      contents: prompt,
+      contents: enhancedPrompt,
       config: {
         responseModalities: ['Text', 'Image'] as ('Text' | 'Image')[],
       },

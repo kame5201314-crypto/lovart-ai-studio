@@ -25,11 +25,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: '缺少 prompt 參數' });
     }
 
-    console.log(`使用 Gemini 生成圖片，提示詞: ${prompt}`);
+    // 優化提示詞：加上英文指令避免生成亂碼文字
+    const enhancedPrompt = `Generate a high-quality image based on the following description. Do NOT add any text, words, letters, or watermarks on the image. The image should be clean and professional.
+
+Description: ${prompt}
+
+Important: No text overlay, no watermarks, no words on the image.`;
+
+    console.log(`使用 Gemini 生成圖片，優化後提示詞: ${enhancedPrompt}`);
 
     const response = await genAI.models.generateContent({
       model: 'gemini-2.5-flash-preview-image-generation',
-      contents: prompt,
+      contents: enhancedPrompt,
       config: {
         responseModalities: ['Text', 'Image'] as ('Text' | 'Image')[],
       },
