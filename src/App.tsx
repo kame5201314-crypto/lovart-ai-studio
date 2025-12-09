@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { LovartToolbar, LovartSidebar, LovartHeader } from './components/lovart';
 import { SmartCanvas, ImageGeneratorBlock, VideoGeneratorBlock } from './components/canvas';
 import { ContextMenu, getImageContextMenuItems, OnboardingTutorial, NanoBananaProTip, SelectionToolbar } from './components/ui';
@@ -44,6 +44,11 @@ function App() {
   const [showNanoBananaTip, setShowNanoBananaTip] = useState(false);
   const [showImageGenerator, setShowImageGenerator] = useState(false);
   const [showVideoGenerator, setShowVideoGenerator] = useState(false);
+
+  // 右側邊欄可調整寬度
+  const [sidebarWidth, setSidebarWidth] = useState(360);
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   // 對話歷史
   const [chatHistory, setChatHistory] = useState([
@@ -430,6 +435,41 @@ function App() {
     saveToHistory('初始化');
   }, []);
 
+  // 拖曳調整右側邊欄寬度
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    resizeRef.current = { startX: e.clientX, startWidth: sidebarWidth };
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing || !resizeRef.current) return;
+      const delta = resizeRef.current.startX - e.clientX;
+      const newWidth = Math.min(600, Math.max(280, resizeRef.current.startWidth + delta));
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      resizeRef.current = null;
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing]);
+
   return (
     <div className="h-screen flex flex-col bg-gray-100 overflow-hidden">
       {/* 頂部標題列 */}
@@ -609,7 +649,15 @@ function App() {
         </div>
 
         {/* 右側 AI 面板 - 小螢幕隱藏 */}
-        <div className="hidden md:block">
+        <div className="hidden md:flex relative" style={{ width: sidebarWidth }}>
+          {/* 拖曳調整寬度的手柄 */}
+          <div
+            onMouseDown={handleResizeStart}
+            className={`absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-400 transition-colors z-10 ${
+              isResizing ? 'bg-blue-500' : 'bg-transparent hover:bg-blue-300'
+            }`}
+            style={{ marginLeft: -2 }}
+          />
           <LovartSidebar
             onSendMessage={handleSendMessage}
             onSelectExample={(example) => {

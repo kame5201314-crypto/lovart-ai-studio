@@ -209,7 +209,7 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
   };
 
   return (
-    <div className="w-full sm:w-[300px] md:w-[320px] lg:w-[360px] h-full flex flex-col bg-white border-l border-gray-200 relative">
+    <div className="w-full h-full flex flex-col bg-white border-l border-gray-200 relative">
       {/* 頂部工具列 */}
       <div className="flex items-center justify-end gap-1 p-3 border-b border-gray-100 relative">
         <ChatToolbar
