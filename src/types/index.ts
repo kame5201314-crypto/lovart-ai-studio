@@ -61,6 +61,8 @@ export interface MarkerLayer extends BaseLayer {
   type: 'marker';
   number: number; // 標記數字
   color: string; // 標記顏色
+  objectName?: string; // AI 識別的物件名稱
+  isIdentifying?: boolean; // 是否正在識別中
 }
 
 export interface DrawingLine {
@@ -127,7 +129,6 @@ export interface PenLayer extends BaseLayer {
 // AI 模型定義
 export type AIModel =
   | 'gemini-flash'
-  | 'nano-banana'
   | 'nano-banana-pro';
 
 export interface AIModelConfig {

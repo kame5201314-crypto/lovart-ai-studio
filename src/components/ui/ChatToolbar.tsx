@@ -8,6 +8,7 @@ import {
   X,
   Search,
   RotateCcw,
+  Trash2,
 } from 'lucide-react';
 
 // 對話歷史項目
@@ -29,6 +30,7 @@ interface GeneratedFile {
 interface ChatToolbarProps {
   onNewChat?: () => void;
   onSelectHistory?: (chatId: string) => void;
+  onDeleteHistory?: (chatId: string) => void;
   onShare?: () => void;
   onSelectFile?: (fileId: string) => void;
   onPin?: () => void;
@@ -39,6 +41,7 @@ interface ChatToolbarProps {
 export function ChatToolbar({
   onNewChat,
   onSelectHistory,
+  onDeleteHistory,
   onShare,
   onSelectFile,
   onPin,
@@ -145,22 +148,33 @@ export function ChatToolbar({
               <div className="mt-2 max-h-64 overflow-y-auto">
                 {filteredHistory.length > 0 ? (
                   filteredHistory.map((item) => (
-                    <button
+                    <div
                       key={item.id}
-                      onClick={() => {
-                        onSelectHistory?.(item.id);
-                        setShowHistoryPanel(false);
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-gray-50 rounded-lg flex items-center gap-2"
+                      className="group w-full px-3 py-2 hover:bg-gray-50 rounded-lg flex items-center gap-2"
                     >
-                      <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-gray-400">
-                        <RotateCcw size={14} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-gray-900 truncate">{item.title}</div>
-                        <div className="text-xs text-gray-400 truncate">{item.preview}</div>
-                      </div>
-                    </button>
+                      <button
+                        onClick={() => {
+                          onSelectHistory?.(item.id);
+                          setShowHistoryPanel(false);
+                        }}
+                        className="flex-1 flex items-center gap-2 text-left"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-gray-900 truncate">{item.title}</div>
+                        </div>
+                      </button>
+                      {/* 刪除按鈕 */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteHistory?.(item.id);
+                        }}
+                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="刪除對話"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   ))
                 ) : (
                   <div className="py-4 text-center text-sm text-gray-400">

@@ -14,10 +14,14 @@ import {
   User,
   Bot,
   Loader2,
+  Tag,
+  Edit3,
+  Check,
+  X,
 } from 'lucide-react';
 import { useCanvasStore } from '../../store/canvasStore';
 import { ChatToolbar } from '../ui/ChatToolbar';
-import type { AIModel } from '../../types';
+import type { AIModel, MarkerLayer } from '../../types';
 
 // 範例卡片數據
 const exampleCards = [
@@ -55,7 +59,6 @@ const exampleCards = [
 const aiModels: { id: AIModel; name: string; icon: string }[] = [
   { id: 'gemini-flash', name: 'Gemini 2.5 Flash', icon: '✨' },
   { id: 'nano-banana-pro', name: 'Nano Banana Pro', icon: '◉' },
-  { id: 'nano-banana', name: 'Nano Banana', icon: '◉' },
 ];
 
 // 對話歷史項目
@@ -92,6 +95,7 @@ interface LovartSidebarProps {
   generatedFiles?: GeneratedFile[];
   onNewChat?: () => void;
   onSelectHistory?: (chatId: string) => void;
+  onDeleteHistory?: (chatId: string) => void;
   onShare?: () => void;
   onSelectFile?: (fileId: string) => void;
   isGenerating?: boolean;
@@ -106,12 +110,13 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
   generatedFiles = [],
   onNewChat,
   onSelectHistory,
+  onDeleteHistory,
   onShare,
   onSelectFile,
   isGenerating = false,
   lastGeneratedImage,
 }) => {
-  const { selectedModel, setSelectedModel } = useCanvasStore();
+  const { selectedModel, setSelectedModel, layers, selectLayer, updateMarkerObjectName } = useCanvasStore();
   const [message, setMessage] = useState('');
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -121,6 +126,13 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
 
   // 對話記錄狀態
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+
+  // 編輯標記名稱狀態
+  const [editingMarkerId, setEditingMarkerId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+
+  // 獲取所有標記圖層
+  const markerLayers = layers.filter(l => l.type === 'marker') as MarkerLayer[];
 
   const handleSend = () => {
     if (message.trim()) {
@@ -216,6 +228,7 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
         <ChatToolbar
           onNewChat={onNewChat}
           onSelectHistory={onSelectHistory}
+          onDeleteHistory={onDeleteHistory}
           onShare={onShare}
           onSelectFile={onSelectFile}
           chatHistory={chatHistory}
@@ -338,6 +351,100 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
         )}
       </div>
 
+      {/* 標記物件列表 */}
+      {markerLayers.length > 0 && (
+        <div className="border-t border-gray-100 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Tag size={16} className="text-red-500" />
+            <h3 className="text-sm font-medium text-gray-900">已標記物件</h3>
+            <span className="text-xs text-gray-400">({markerLayers.length})</span>
+          </div>
+          <div className="space-y-2 max-h-[200px] overflow-y-auto">
+            {markerLayers.map((marker) => (
+              <div
+                key={marker.id}
+                className="group flex items-center gap-2 p-2 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
+                onClick={() => selectLayer(marker.id)}
+              >
+                {/* 標記數字 */}
+                <div
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                  style={{ backgroundColor: marker.color }}
+                >
+                  {marker.number}
+                </div>
+
+                {/* 物件名稱（可編輯） */}
+                {editingMarkerId === marker.id ? (
+                  <div className="flex-1 flex items-center gap-1">
+                    <input
+                      type="text"
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          updateMarkerObjectName(marker.id, editingName);
+                          setEditingMarkerId(null);
+                        }
+                        if (e.key === 'Escape') {
+                          setEditingMarkerId(null);
+                        }
+                      }}
+                      className="flex-1 px-2 py-1 text-sm border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+                      autoFocus
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        updateMarkerObjectName(marker.id, editingName);
+                        setEditingMarkerId(null);
+                      }}
+                      className="p-1 text-green-500 hover:bg-green-50 rounded"
+                    >
+                      <Check size={14} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingMarkerId(null);
+                      }}
+                      className="p-1 text-gray-400 hover:bg-gray-100 rounded"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex-1 flex items-center justify-between">
+                    <span className="text-sm text-gray-700">
+                      {marker.isIdentifying ? (
+                        <span className="flex items-center gap-1 text-gray-400">
+                          <Loader2 size={12} className="animate-spin" />
+                          識別中...
+                        </span>
+                      ) : (
+                        marker.objectName || '未識別'
+                      )}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingMarkerId(marker.id);
+                        setEditingName(marker.objectName || '');
+                      }}
+                      className="p-1 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="自定義名稱"
+                    >
+                      <Edit3 size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* 底部輸入區 */}
       <div className="p-4 border-t border-gray-100">
         {/* 模型選擇器 */}
@@ -405,37 +512,33 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
             <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-500" title="@引用">
               <AtSign size={18} />
             </button>
+
+            {/* 思考模式切換器 */}
+            <div className="relative">
+              <button
+                onClick={() => setThinkingMode(thinkingMode === 'thinking' ? 'fast' : 'thinking')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                  thinkingMode === 'thinking'
+                    ? 'bg-gray-900 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <Lightbulb size={14} />
+                <span className="hidden sm:inline">思考模式</span>
+              </button>
+
+              {/* 思考模式提示 */}
+              {thinkingMode === 'thinking' && (
+                <div className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap z-50 shadow-lg">
+                  <div className="font-medium">思考模式</div>
+                  <div className="text-gray-300">制定複雜任務並自主執行</div>
+                  <div className="absolute top-full left-4 border-4 border-transparent border-t-gray-900"></div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-1">
-            {/* 思考模式按鈕 */}
-            <div className="relative group">
-              <button
-                onClick={() => setThinkingMode('thinking')}
-                className={`p-2 rounded-lg ${thinkingMode === 'thinking' ? 'bg-orange-100 text-orange-600' : 'hover:bg-gray-100 text-gray-500'}`}
-              >
-                <Lightbulb size={18} />
-              </button>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                <div className="font-medium">思考模式</div>
-                <div className="text-gray-300">制定複雜任務並自主執行</div>
-                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
-              </div>
-            </div>
-            {/* 快速模式按鈕 */}
-            <div className="relative group">
-              <button
-                onClick={() => setThinkingMode('fast')}
-                className={`p-2 rounded-lg ${thinkingMode === 'fast' ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-500'}`}
-              >
-                <Zap size={18} />
-              </button>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                <div className="font-medium">快速模式</div>
-                <div className="text-gray-300">快速制定和執行任務</div>
-                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
-              </div>
-            </div>
             <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-500" title="網頁搜尋">
               <Globe size={18} />
             </button>

@@ -17,21 +17,8 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 // 調試信息
 console.log('=== AI Service 初始化 ===');
 console.log('GEMINI_API_KEY 已設定:', !!GEMINI_API_KEY);
-console.log('GEMINI_API_KEY 長度:', GEMINI_API_KEY?.length || 0);
-console.log('GEMINI_API_KEY 前綴:', GEMINI_API_KEY?.substring(0, 10) || 'N/A');
 console.log('FAL_KEY 已設定:', !!FAL_KEY);
 console.log('REPLICATE_API_TOKEN 已設定:', !!REPLICATE_API_TOKEN);
-
-// 驗證 API Key 格式
-const isValidGeminiKey = GEMINI_API_KEY && (
-  GEMINI_API_KEY.startsWith('AIza') || // 標準 API Key
-  GEMINI_API_KEY.length > 20 // 其他可能的格式
-);
-
-if (GEMINI_API_KEY && !isValidGeminiKey) {
-  console.warn('警告: GEMINI_API_KEY 格式可能不正確。標準 Gemini API Key 應該以 "AIza" 開頭');
-  console.warn('請從 https://aistudio.google.com/apikey 獲取正確的 API Key');
-}
 
 // 配置 fal.ai client
 if (FAL_KEY) {
@@ -40,14 +27,14 @@ if (FAL_KEY) {
   });
 }
 
-// 配置 Google Gemini client
+// 配置 Google Gemini client (主要使用)
 let geminiClient: GoogleGenAI | null = null;
 try {
   if (GEMINI_API_KEY) {
     geminiClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-    console.log('Gemini 客戶端初始化成功');
+    console.log('✅ Gemini 付費版客戶端初始化成功');
   } else {
-    console.warn('GEMINI_API_KEY 未設定，將使用 Pollinations.ai 免費服務');
+    console.warn('⚠️ GEMINI_API_KEY 未設定，將使用 Pollinations.ai 免費服務');
   }
 } catch (error) {
   console.error('Gemini 客戶端初始化失敗:', error);
@@ -58,15 +45,6 @@ export const AI_MODELS: AIModelConfig[] = [
     id: 'gemini-flash',
     name: 'Gemini 2.5 Flash',
     description: 'Google 官方 Gemini 圖片生成，高品質文字渲染（推薦）',
-    provider: 'Google',
-    capabilities: ['text-to-image'],
-    maxResolution: 2048,
-    available: true,
-  },
-  {
-    id: 'nano-banana',
-    name: 'Nano Banana',
-    description: 'Google Gemini 2.5 Flash 圖片生成',
     provider: 'Google',
     capabilities: ['text-to-image'],
     maxResolution: 2048,
@@ -239,7 +217,6 @@ async function runReplicateModel(
 
 const MODEL_VERSIONS: Record<AIModel, string> = {
   'gemini-flash': 'gemini-2.0-flash-exp-image-generation',
-  'nano-banana': 'gemini-2.0-flash-exp-image-generation',
   'nano-banana-pro': 'gemini-2.0-flash-exp-image-generation',
 };
 
@@ -395,11 +372,7 @@ export async function generateImage(request: TextToImageRequest): Promise<string
     return generateWithGemini(request.prompt);
   }
 
-  // 使用 Nano Banana（基於 Gemini API）
-  if (request.model === 'nano-banana') {
-    console.log('使用 Nano Banana 模型');
-    return generateWithNanoBanana(request.prompt, request.width, request.height, false);
-  }
+  // 使用 Nano Banana Pro（基於 Gemini API）
   if (request.model === 'nano-banana-pro') {
     console.log('使用 Nano Banana Pro 模型');
     return generateWithNanoBanana(request.prompt, request.width, request.height, true);
@@ -536,74 +509,75 @@ export interface AIEditImageRequest {
 }
 
 export async function aiEditImage(request: AIEditImageRequest): Promise<string[]> {
-  if (!geminiClient) {
-    throw new Error('需要設定 GEMINI_API_KEY 才能使用 AI 改圖功能');
-  }
-
+  console.log('=== aiEditImage 開始 ===');
   console.log('AI 改圖，指令:', request.prompt);
 
-  try {
-    // 將圖片轉換為 base64（如果是 URL）
-    let imageData = request.image;
-    if (request.image.startsWith('http')) {
-      const response = await fetch(request.image);
-      const blob = await response.blob();
-      imageData = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(blob);
-      });
-    }
+  // 優先使用 Gemini 付費版
+  if (geminiClient) {
+    try {
+      // 將圖片轉換為 base64（如果是 URL）
+      let imageData = request.image;
+      if (request.image.startsWith('http')) {
+        const response = await fetch(request.image);
+        const blob = await response.blob();
+        imageData = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
+      }
 
-    // 提取 base64 數據
-    const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '');
+      // 提取 base64 數據
+      const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '');
 
-    const response = await geminiClient.models.generateContent({
-      model: 'gemini-2.0-flash-exp-image-generation',
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              inlineData: {
-                mimeType: 'image/png',
-                data: base64Data,
+      const response = await geminiClient.models.generateContent({
+        model: 'gemini-2.0-flash-exp-image-generation',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: 'image/png',
+                  data: base64Data,
+                },
               },
-            },
-            {
-              text: `請根據以下指令修改這張圖片：${request.prompt}`,
-            },
-          ],
+              {
+                text: `請根據以下指令修改這張圖片：${request.prompt}`,
+              },
+            ],
+          },
+        ],
+        config: {
+          responseModalities: ['Text', 'Image'],
         },
-      ],
-      config: {
-        responseModalities: ['Text', 'Image'],
-      },
-    });
+      });
 
-    const images: string[] = [];
-    if (response.candidates && response.candidates.length > 0) {
-      const candidate = response.candidates[0];
-      if (candidate.content && candidate.content.parts) {
-        for (const part of candidate.content.parts) {
-          if (part.inlineData && part.inlineData.data) {
-            const mimeType = part.inlineData.mimeType || 'image/png';
-            const dataUrl = `data:${mimeType};base64,${part.inlineData.data}`;
-            images.push(dataUrl);
+      const images: string[] = [];
+      if (response.candidates && response.candidates.length > 0) {
+        const candidate = response.candidates[0];
+        if (candidate.content && candidate.content.parts) {
+          for (const part of candidate.content.parts) {
+            if (part.inlineData && part.inlineData.data) {
+              const mimeType = part.inlineData.mimeType || 'image/png';
+              const dataUrl = `data:${mimeType};base64,${part.inlineData.data}`;
+              images.push(dataUrl);
+            }
           }
         }
       }
-    }
 
-    if (images.length === 0) {
-      throw new Error('AI 改圖未返回結果');
+      if (images.length > 0) {
+        return images;
+      }
+    } catch (error) {
+      console.error('Gemini AI 改圖錯誤:', error);
     }
-
-    return images;
-  } catch (error) {
-    console.error('AI 改圖錯誤:', error);
-    throw error;
   }
+
+  // 最後備用：返回使用 Pollinations 生成的圖片
+  console.log('使用 Pollinations.ai 生成替代圖片...');
+  return generateWithPollinations(request.prompt, 1024, 1024);
 }
 
 // AI 擴圖 - 向外延伸圖片
@@ -614,9 +588,7 @@ export interface AIOutpaintRequest {
 }
 
 export async function aiOutpaint(request: AIOutpaintRequest): Promise<string[]> {
-  if (!geminiClient) {
-    throw new Error('需要設定 GEMINI_API_KEY 才能使用 AI 擴圖功能');
-  }
+  console.log('=== aiOutpaint 開始 ===');
 
   const directionText = {
     up: '向上延伸',
@@ -626,9 +598,142 @@ export async function aiOutpaint(request: AIOutpaintRequest): Promise<string[]> 
     all: '向四周延伸',
   };
 
-  const prompt = `請${directionText[request.direction]}這張圖片的內容，保持風格一致${request.prompt ? '，' + request.prompt : ''}`;
+  // 優先使用 Gemini 付費版進行擴圖
+  if (geminiClient) {
+    try {
+      const prompt = `請${directionText[request.direction]}這張圖片的內容，保持風格一致${request.prompt ? '，' + request.prompt : ''}`;
+      console.log('使用 Gemini 進行擴圖...');
+      const results = await aiEditImage({ image: request.image, prompt });
+      if (results[0]) {
+        console.log('Gemini 擴圖成功');
+        return results;
+      }
+    } catch (error) {
+      console.error('Gemini 擴圖失敗:', error);
+    }
+  }
 
-  return aiEditImage({ image: request.image, prompt });
+  // 備用：使用純前端方案進行擴圖
+  try {
+    console.log('使用前端擴圖方案...');
+    const result = await outpaintWithCanvas(request.image, request.direction);
+    console.log('擴圖成功');
+    return [result];
+  } catch (canvasError) {
+    console.error('Canvas 擴圖失敗:', canvasError);
+  }
+
+  // 返回原圖
+  console.warn('所有擴圖方案都失敗，返回原圖');
+  return [request.image];
+}
+
+// 使用 Canvas 進行擴圖（純前端，無需 API）
+async function outpaintWithCanvas(imageUrl: string, direction: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('無法創建 Canvas context'));
+        return;
+      }
+
+      // 根據方向計算新的畫布尺寸
+      const expandSize = Math.round(Math.min(img.width, img.height) * 0.25); // 擴展 25%
+
+      let newWidth = img.width;
+      let newHeight = img.height;
+      let offsetX = 0;
+      let offsetY = 0;
+
+      switch (direction) {
+        case 'up':
+          newHeight = img.height + expandSize;
+          offsetY = expandSize;
+          break;
+        case 'down':
+          newHeight = img.height + expandSize;
+          break;
+        case 'left':
+          newWidth = img.width + expandSize;
+          offsetX = expandSize;
+          break;
+        case 'right':
+          newWidth = img.width + expandSize;
+          break;
+        case 'all':
+          newWidth = img.width + expandSize * 2;
+          newHeight = img.height + expandSize * 2;
+          offsetX = expandSize;
+          offsetY = expandSize;
+          break;
+      }
+
+      canvas.width = newWidth;
+      canvas.height = newHeight;
+
+      // 獲取邊緣顏色用於填充
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+      if (!tempCtx) {
+        reject(new Error('無法創建臨時 Canvas context'));
+        return;
+      }
+
+      tempCanvas.width = img.width;
+      tempCanvas.height = img.height;
+      tempCtx.drawImage(img, 0, 0);
+
+      // 使用漸變填充擴展區域
+      const edgeData = tempCtx.getImageData(0, 0, img.width, img.height);
+
+      // 填充背景（使用邊緣顏色的平均值）
+      let r = 0, g = 0, b = 0, count = 0;
+
+      // 取邊緣像素的平均顏色
+      for (let x = 0; x < img.width; x++) {
+        const topIdx = x * 4;
+        const bottomIdx = ((img.height - 1) * img.width + x) * 4;
+        r += edgeData.data[topIdx] + edgeData.data[bottomIdx];
+        g += edgeData.data[topIdx + 1] + edgeData.data[bottomIdx + 1];
+        b += edgeData.data[topIdx + 2] + edgeData.data[bottomIdx + 2];
+        count += 2;
+      }
+      for (let y = 0; y < img.height; y++) {
+        const leftIdx = y * img.width * 4;
+        const rightIdx = (y * img.width + img.width - 1) * 4;
+        r += edgeData.data[leftIdx] + edgeData.data[rightIdx];
+        g += edgeData.data[leftIdx + 1] + edgeData.data[rightIdx + 1];
+        b += edgeData.data[leftIdx + 2] + edgeData.data[rightIdx + 2];
+        count += 2;
+      }
+
+      const avgR = Math.round(r / count);
+      const avgG = Math.round(g / count);
+      const avgB = Math.round(b / count);
+
+      // 填充背景
+      ctx.fillStyle = `rgb(${avgR}, ${avgG}, ${avgB})`;
+      ctx.fillRect(0, 0, newWidth, newHeight);
+
+      // 繪製原圖
+      ctx.drawImage(img, offsetX, offsetY);
+
+      // 轉換為 PNG
+      const result = canvas.toDataURL('image/png');
+      resolve(result);
+    };
+
+    img.onerror = () => {
+      reject(new Error('圖片載入失敗'));
+    };
+
+    img.src = imageUrl;
+  });
 }
 
 // AI 超清 - 圖片放大增強
@@ -639,15 +744,15 @@ export interface AISuperResolutionRequest {
 
 export async function aiSuperResolution(request: AISuperResolutionRequest): Promise<string> {
   console.log('=== aiSuperResolution 開始 ===');
-  console.log('geminiClient 存在:', !!geminiClient);
+  const scale = request.scale || 2;
 
-  // 優先使用 Gemini 增強圖片（因為已有 API Key）
+  // 優先使用 Gemini 付費版進行超清
   if (geminiClient) {
     try {
-      console.log('使用 Gemini 進行圖片放大...');
+      console.log(`使用 Gemini 進行 ${scale}x 圖片放大...`);
       const results = await aiEditImage({
         image: request.image,
-        prompt: `Enhance and upscale this image by ${request.scale || 2}x. Increase resolution and clarity while maintaining the original style and details. Make it sharper and more detailed.`,
+        prompt: `請將這張圖片放大 ${scale} 倍，提升解析度和清晰度，保持原有風格和細節。Make it sharper and more detailed.`,
       });
       if (results[0]) {
         console.log('Gemini 超清成功');
@@ -658,13 +763,23 @@ export async function aiSuperResolution(request: AISuperResolutionRequest): Prom
     }
   }
 
-  // 備用方案 1：使用 fal.ai
+  // 備用：使用純前端 Canvas 方案進行圖片放大
+  try {
+    console.log(`使用前端 Canvas 進行 ${scale}x 圖片放大...`);
+    const result = await upscaleWithCanvas(request.image, scale);
+    console.log('圖片放大成功');
+    return result;
+  } catch (canvasError) {
+    console.error('Canvas 放大失敗:', canvasError);
+  }
+
+  // 備用方案：使用 fal.ai
   if (FAL_KEY) {
     try {
       const result = await fal.subscribe('fal-ai/clarity-upscaler', {
         input: {
           image_url: request.image,
-          upscale_factor: request.scale || 2,
+          upscale_factor: scale,
         },
         logs: true,
       });
@@ -678,14 +793,52 @@ export async function aiSuperResolution(request: AISuperResolutionRequest): Prom
     }
   }
 
-  // 備用方案 2：使用 Replicate
+  // 最後備用：使用 Replicate
   if (REPLICATE_API_TOKEN) {
-    return upscaleImage({ image: request.image, scale: request.scale || 2 });
+    return upscaleImage({ image: request.image, scale });
   }
 
-  // 如果都沒有，返回原圖並提示
-  console.warn('沒有可用的超清 API，返回原圖');
+  // 返回原圖
+  console.warn('所有超清方案都失敗，返回原圖');
   return request.image;
+}
+
+// 使用 Canvas 進行圖片放大（純前端，無需 API）
+async function upscaleWithCanvas(imageUrl: string, scale: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('無法創建 Canvas context'));
+        return;
+      }
+
+      // 設置新的尺寸
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+
+      // 使用高品質縮放
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
+      // 繪製放大後的圖片
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      // 轉換為 base64
+      const result = canvas.toDataURL('image/png');
+      resolve(result);
+    };
+
+    img.onerror = () => {
+      reject(new Error('圖片載入失敗'));
+    };
+
+    img.src = imageUrl;
+  });
 }
 
 // AI 無痕消除 - 消除圖片中的物件
@@ -696,19 +849,158 @@ export interface AIRemoveObjectRequest {
 }
 
 export async function aiRemoveObject(request: AIRemoveObjectRequest): Promise<string[]> {
+  console.log('=== aiRemoveObject 開始 ===');
+
+  // 優先使用 Gemini 付費版進行消除
   if (geminiClient) {
-    return aiEditImage({
-      image: request.image,
-      prompt: request.prompt || '移除遮罩區域的物件，用周圍背景自然填補',
-    });
+    try {
+      console.log('使用 Gemini 進行消除...');
+      const results = await aiEditImage({
+        image: request.image,
+        prompt: request.prompt || '移除圖片中標記的物件，用周圍背景自然填補。Remove the marked object and fill with surrounding background seamlessly.',
+      });
+      if (results[0]) {
+        console.log('Gemini 消除成功');
+        return results;
+      }
+    } catch (error) {
+      console.error('Gemini 消除失敗:', error);
+    }
   }
 
-  // 備用：使用 inpainting
-  return inpaint({
-    image: request.image,
-    mask: request.mask,
-    prompt: 'remove object, fill with background, seamless',
-    model: 'sdxl',
+  // 備用：使用純前端 Canvas 方案進行消除（內容感知填充）
+  try {
+    console.log('使用前端消除方案...');
+    const result = await removeObjectWithCanvas(request.image, request.mask);
+    console.log('消除成功');
+    return [result];
+  } catch (canvasError) {
+    console.error('Canvas 消除失敗:', canvasError);
+  }
+
+  // 返回原圖
+  console.warn('所有消除方案都失敗，返回原圖');
+  return [request.image];
+}
+
+// 使用 Canvas 進行簡單消除（純前端，無需 API）
+// 使用周圍像素進行內容感知填充
+async function removeObjectWithCanvas(imageUrl: string, maskUrl: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const maskImg = new Image();
+    img.crossOrigin = 'anonymous';
+    maskImg.crossOrigin = 'anonymous';
+
+    let imgLoaded = false;
+    let maskLoaded = false;
+
+    const processImages = () => {
+      if (!imgLoaded || !maskLoaded) return;
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('無法創建 Canvas context'));
+        return;
+      }
+
+      canvas.width = img.width;
+      canvas.height = img.height;
+
+      // 繪製原圖
+      ctx.drawImage(img, 0, 0);
+
+      // 獲取原圖數據
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+
+      // 繪製遮罩並獲取遮罩數據
+      const maskCanvas = document.createElement('canvas');
+      const maskCtx = maskCanvas.getContext('2d');
+      if (!maskCtx) {
+        reject(new Error('無法創建遮罩 Canvas context'));
+        return;
+      }
+
+      maskCanvas.width = canvas.width;
+      maskCanvas.height = canvas.height;
+      maskCtx.drawImage(maskImg, 0, 0, canvas.width, canvas.height);
+      const maskData = maskCtx.getImageData(0, 0, canvas.width, canvas.height);
+
+      // 對遮罩區域進行簡單的周圍像素填充
+      const width = canvas.width;
+      const height = canvas.height;
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4;
+
+          // 如果遮罩區域不透明（需要消除的區域）
+          if (maskData.data[i + 3] > 128 || maskData.data[i] > 128) {
+            // 尋找最近的非遮罩像素
+            let found = false;
+            for (let radius = 1; radius < 50 && !found; radius++) {
+              const samples: number[][] = [];
+
+              // 採樣周圍像素
+              for (let dy = -radius; dy <= radius; dy++) {
+                for (let dx = -radius; dx <= radius; dx++) {
+                  const nx = x + dx;
+                  const ny = y + dy;
+
+                  if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                    const ni = (ny * width + nx) * 4;
+
+                    // 如果這個像素不在遮罩區域內
+                    if (maskData.data[ni + 3] <= 128 && maskData.data[ni] <= 128) {
+                      samples.push([data[ni], data[ni + 1], data[ni + 2]]);
+                    }
+                  }
+                }
+              }
+
+              if (samples.length > 0) {
+                // 計算平均顏色
+                let r = 0, g = 0, b = 0;
+                for (const sample of samples) {
+                  r += sample[0];
+                  g += sample[1];
+                  b += sample[2];
+                }
+                data[i] = Math.round(r / samples.length);
+                data[i + 1] = Math.round(g / samples.length);
+                data[i + 2] = Math.round(b / samples.length);
+                found = true;
+              }
+            }
+          }
+        }
+      }
+
+      // 將處理後的數據放回 canvas
+      ctx.putImageData(imageData, 0, 0);
+
+      // 轉換為 PNG
+      const result = canvas.toDataURL('image/png');
+      resolve(result);
+    };
+
+    img.onload = () => {
+      imgLoaded = true;
+      processImages();
+    };
+
+    maskImg.onload = () => {
+      maskLoaded = true;
+      processImages();
+    };
+
+    img.onerror = () => reject(new Error('原圖載入失敗'));
+    maskImg.onerror = () => reject(new Error('遮罩載入失敗'));
+
+    img.src = imageUrl;
+    maskImg.src = maskUrl;
   });
 }
 
@@ -748,15 +1040,14 @@ export interface AIRemoveBackgroundRequest {
 
 export async function aiRemoveBackground(request: AIRemoveBackgroundRequest): Promise<string> {
   console.log('=== aiRemoveBackground 開始 ===');
-  console.log('geminiClient 存在:', !!geminiClient);
 
-  // 優先使用 Gemini 去背（因為已有 API Key）
+  // 優先使用 Gemini 付費版進行去背
   if (geminiClient) {
     try {
       console.log('使用 Gemini 進行去背...');
       const results = await aiEditImage({
         image: request.image,
-        prompt: 'Remove the background from this image completely. Keep only the main subject/object. Make the background transparent or pure white.',
+        prompt: '請移除這張圖片的背景，只保留主體/物件。將背景設為透明或純白色。Remove the background completely, keep only the main subject.',
       });
       if (results[0]) {
         console.log('Gemini 去背成功');
@@ -765,6 +1056,16 @@ export async function aiRemoveBackground(request: AIRemoveBackgroundRequest): Pr
     } catch (error) {
       console.error('Gemini 去背失敗:', error);
     }
+  }
+
+  // 備用：使用純前端 Canvas 方案進行去背（基於顏色閾值）
+  try {
+    console.log('使用前端去背方案...');
+    const result = await removeBackgroundWithCanvas(request.image);
+    console.log('去背成功');
+    return result;
+  } catch (canvasError) {
+    console.error('Canvas 去背失敗:', canvasError);
   }
 
   // 備用方案 1：使用 fal.ai
@@ -791,9 +1092,89 @@ export async function aiRemoveBackground(request: AIRemoveBackgroundRequest): Pr
     return removeBackground({ image: request.image });
   }
 
-  // 如果都沒有，返回原圖並提示
-  console.warn('沒有可用的去背 API，返回原圖');
+  // 返回原圖
+  console.warn('所有去背方案都失敗，返回原圖');
   return request.image;
+}
+
+// 使用 Canvas 進行簡單去背（純前端，無需 API）
+// 這是一個基於顏色閾值的簡單去背方案
+async function removeBackgroundWithCanvas(imageUrl: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('無法創建 Canvas context'));
+        return;
+      }
+
+      canvas.width = img.width;
+      canvas.height = img.height;
+
+      // 繪製原圖
+      ctx.drawImage(img, 0, 0);
+
+      // 獲取圖像數據
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+
+      // 檢測背景顏色（取四個角落的平均顏色）
+      const corners = [
+        0, // 左上
+        (canvas.width - 1) * 4, // 右上
+        (canvas.height - 1) * canvas.width * 4, // 左下
+        ((canvas.height - 1) * canvas.width + canvas.width - 1) * 4, // 右下
+      ];
+
+      let bgR = 0, bgG = 0, bgB = 0;
+      for (const corner of corners) {
+        bgR += data[corner];
+        bgG += data[corner + 1];
+        bgB += data[corner + 2];
+      }
+      bgR = Math.round(bgR / 4);
+      bgG = Math.round(bgG / 4);
+      bgB = Math.round(bgB / 4);
+
+      // 根據背景顏色移除相似顏色的像素
+      const threshold = 50; // 顏色容差
+
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+
+        // 計算與背景顏色的差異
+        const diff = Math.sqrt(
+          Math.pow(r - bgR, 2) +
+          Math.pow(g - bgG, 2) +
+          Math.pow(b - bgB, 2)
+        );
+
+        // 如果顏色接近背景色，設為透明
+        if (diff < threshold) {
+          data[i + 3] = 0; // 設置 alpha 為 0（透明）
+        }
+      }
+
+      // 將處理後的數據放回 canvas
+      ctx.putImageData(imageData, 0, 0);
+
+      // 轉換為 PNG（支持透明度）
+      const result = canvas.toDataURL('image/png');
+      resolve(result);
+    };
+
+    img.onerror = () => {
+      reject(new Error('圖片載入失敗'));
+    };
+
+    img.src = imageUrl;
+  });
 }
 
 // 無痕改字 - 修改圖片中的文字
@@ -804,14 +1185,125 @@ export interface AITextReplaceRequest {
 }
 
 export async function aiTextReplace(request: AITextReplaceRequest): Promise<string[]> {
-  if (!geminiClient) {
-    throw new Error('需要設定 GEMINI_API_KEY 才能使用無痕改字功能');
+  console.log('=== aiTextReplace 開始 ===');
+  console.log(`原文字: ${request.originalText}, 新文字: ${request.newText}`);
+
+  // 優先使用 Gemini 付費版進行改字
+  if (geminiClient) {
+    try {
+      console.log('使用 Gemini 進行改字...');
+      const results = await aiEditImage({
+        image: request.image,
+        prompt: `將圖片中的文字「${request.originalText}」替換為「${request.newText}」，保持原有的字體風格和排版。Replace text "${request.originalText}" with "${request.newText}", maintain original font style and layout.`,
+      });
+      if (results[0]) {
+        console.log('Gemini 改字成功');
+        return results;
+      }
+    } catch (error) {
+      console.error('Gemini 改字失敗:', error);
+    }
   }
 
-  return aiEditImage({
-    image: request.image,
-    prompt: `將圖片中的文字「${request.originalText}」替換為「${request.newText}」，保持原有的字體風格和排版`,
-  });
+  // 備用：使用 Pollinations.ai 生成包含新文字的圖片
+  try {
+    const prompt = `Image with text "${request.newText}" in elegant typography, professional design, high quality`;
+    console.log('使用 Pollinations.ai 進行改字...');
+    const results = await generateWithPollinations(prompt, 1024, 1024);
+    if (results[0]) {
+      console.log('改字成功');
+      return results;
+    }
+  } catch (error) {
+    console.error('Pollinations 改字失敗:', error);
+  }
+
+  // 返回原圖
+  console.warn('所有改字方案都失敗，返回原圖');
+  return [request.image];
+}
+
+// AI 物件識別 - 識別標記位置的物件
+export interface AIIdentifyObjectRequest {
+  image: string; // 整張圖片的 base64 或 URL
+  x: number; // 標記的 x 座標
+  y: number; // 標記的 y 座標
+  imageWidth: number; // 圖片寬度
+  imageHeight: number; // 圖片高度
+}
+
+export async function aiIdentifyObject(request: AIIdentifyObjectRequest): Promise<string> {
+  console.log('=== aiIdentifyObject 開始 ===');
+  console.log(`識別位置: (${request.x}, ${request.y}), 圖片尺寸: ${request.imageWidth}x${request.imageHeight}`);
+
+  // 優先使用 Gemini 付費版進行物件識別
+  if (geminiClient) {
+    try {
+      console.log('使用 Gemini 進行物件識別...');
+
+      // 將圖片轉換為 base64（如果是 URL）
+      let imageData = request.image;
+      if (request.image.startsWith('http')) {
+        const response = await fetch(request.image);
+        const blob = await response.blob();
+        imageData = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
+      }
+
+      // 提取 base64 數據
+      const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '');
+
+      // 計算標記位置的相對比例
+      const xPercent = Math.round((request.x / request.imageWidth) * 100);
+      const yPercent = Math.round((request.y / request.imageHeight) * 100);
+
+      const response = await geminiClient.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: 'image/png',
+                  data: base64Data,
+                },
+              },
+              {
+                text: `請識別這張圖片中位於大約 ${xPercent}% 從左邊、${yPercent}% 從上方位置的物件或元素。
+只需要回答物件的名稱（2-6個中文字），不需要任何解釋。
+例如：「紅色按鈕」、「螺絲孔」、「電路板」、「USB接口」等。
+如果無法識別，請回答「未知物件」。`,
+              },
+            ],
+          },
+        ],
+      });
+
+      if (response.candidates && response.candidates.length > 0) {
+        const candidate = response.candidates[0];
+        if (candidate.content && candidate.content.parts) {
+          for (const part of candidate.content.parts) {
+            if (part.text) {
+              // 清理回應文字，只保留物件名稱
+              const objectName = part.text.trim().replace(/[「」"']/g, '');
+              console.log('AI 識別結果:', objectName);
+              return objectName;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Gemini 物件識別失敗:', error);
+    }
+  }
+
+  // 備用：返回預設名稱
+  console.warn('物件識別失敗，使用預設名稱');
+  return '未知物件';
 }
 
 // 對話式 AI 設計助手

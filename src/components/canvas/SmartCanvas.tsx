@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { Stage, Layer, Rect, Circle, RegularPolygon, Star, Arrow, Transformer, Line } from 'react-konva';
 import type Konva from 'konva';
 import { useCanvasStore } from '../../store/canvasStore';
@@ -10,7 +10,7 @@ import { ShapeLayerComponent } from './ShapeLayerComponent';
 import { MarkerLayerComponent } from './MarkerLayerComponent';
 import { PenLayerComponent } from './PenLayerComponent';
 import { ImageToolbar, ImageAIToolsPanel, AIToolsTrigger } from '../ui';
-import type { Layer as LayerType, DrawingLine, ShapeType, ShapeLayer, MarkerLayer, PenLayer, PenPath, PenPoint, ImageLayer } from '../../types';
+import type { Layer as LayerType, DrawingLine, ShapeType, ShapeLayer, MarkerLayer, PenLayer, PenPath, PenPoint, ImageLayer, TextLayer } from '../../types';
 import {
   aiSuperResolution,
   aiRemoveBackground,
@@ -18,6 +18,7 @@ import {
   aiEditImage,
   aiTextReplace,
   inpaint,
+  aiIdentifyObject,
 } from '../../services/aiService';
 
 // 框選狀態介面
@@ -28,6 +29,199 @@ interface SelectionBox {
   height: number;
   visible: boolean;
 }
+
+// 標記編輯彈窗組件
+const MarkerEditPopup: React.FC<{
+  marker: MarkerLayer;
+  position: { x: number; y: number };
+  onSave: (name: string) => void;
+  onClose: () => void;
+  onAIAction: (prompt: string) => void;
+  isProcessing?: boolean;
+}> = ({ marker, position, onSave, onClose, onAIAction, isProcessing = false }) => {
+  const [editName, setEditName] = React.useState(marker.objectName || '');
+  const [aiPrompt, setAiPrompt] = React.useState('');
+  const [activeTab, setActiveTab] = React.useState<'name' | 'ai'>('ai');
+
+  return (
+    <div
+      className="absolute bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden"
+      style={{
+        left: position.x + 40,
+        top: position.y - 20,
+        minWidth: '260px',
+        maxWidth: '320px',
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* 標記資訊頭部 */}
+      <div className="flex items-center gap-2 p-3 bg-gray-50 border-b border-gray-100">
+        <div
+          className="w-7 h-7 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-sm"
+          style={{ backgroundColor: marker.color }}
+        >
+          {marker.number}
+        </div>
+        <div className="flex-1">
+          <span className="text-sm font-medium text-gray-800">
+            {marker.isIdentifying ? '識別中...' : (marker.objectName || '標記 ' + marker.number)}
+          </span>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      {/* 標籤切換 */}
+      <div className="flex border-b border-gray-100">
+        <button
+          onClick={() => setActiveTab('ai')}
+          className={`flex-1 py-2 text-xs font-medium transition-colors ${
+            activeTab === 'ai'
+              ? 'text-blue-600 border-b-2 border-blue-500 bg-blue-50/50'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          ✨ AI 協作
+        </button>
+        <button
+          onClick={() => setActiveTab('name')}
+          className={`flex-1 py-2 text-xs font-medium transition-colors ${
+            activeTab === 'name'
+              ? 'text-blue-600 border-b-2 border-blue-500 bg-blue-50/50'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          ✏️ 自定義名稱
+        </button>
+      </div>
+
+      <div className="p-3">
+        {activeTab === 'ai' ? (
+          <>
+            {/* AI 指令輸入 */}
+            <div className="mb-3">
+              <label className="block text-xs text-gray-500 mb-1.5">對這個位置下達指令</label>
+              <textarea
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                placeholder={`例如：\n• 在這裡加上文字 "123"\n• 移除這個物件\n• 將這裡改成紅色\n• 在這個位置加上箭頭`}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 resize-none"
+                rows={4}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    if (aiPrompt.trim()) {
+                      onAIAction(aiPrompt);
+                    }
+                  }
+                  if (e.key === 'Escape') {
+                    onClose();
+                  }
+                }}
+                autoFocus
+                disabled={isProcessing}
+              />
+              <p className="text-xs text-gray-400 mt-1">按 Ctrl+Enter 快速執行</p>
+            </div>
+
+            {/* AI 快捷操作 */}
+            <div className="mb-3">
+              <label className="block text-xs text-gray-500 mb-1.5">快捷操作</label>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  onClick={() => setAiPrompt('在這個位置加上文字')}
+                  className="px-2 py-1.5 text-xs text-gray-600 bg-gray-50 hover:bg-gray-100 rounded transition-colors text-left"
+                  disabled={isProcessing}
+                >
+                  📝 加文字
+                </button>
+                <button
+                  onClick={() => setAiPrompt('移除這個物件')}
+                  className="px-2 py-1.5 text-xs text-gray-600 bg-gray-50 hover:bg-gray-100 rounded transition-colors text-left"
+                  disabled={isProcessing}
+                >
+                  🗑️ 移除物件
+                </button>
+                <button
+                  onClick={() => setAiPrompt('用周圍背景填補這個區域')}
+                  className="px-2 py-1.5 text-xs text-gray-600 bg-gray-50 hover:bg-gray-100 rounded transition-colors text-left"
+                  disabled={isProcessing}
+                >
+                  🩹 修復區域
+                </button>
+                <button
+                  onClick={() => setAiPrompt('在這裡加上標註箭頭')}
+                  className="px-2 py-1.5 text-xs text-gray-600 bg-gray-50 hover:bg-gray-100 rounded transition-colors text-left"
+                  disabled={isProcessing}
+                >
+                  ➡️ 加箭頭
+                </button>
+              </div>
+            </div>
+
+            {/* 執行按鈕 */}
+            <button
+              onClick={() => {
+                if (aiPrompt.trim()) {
+                  onAIAction(aiPrompt);
+                }
+              }}
+              disabled={!aiPrompt.trim() || isProcessing}
+              className="w-full py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white text-sm font-medium rounded-lg hover:from-blue-600 hover:to-purple-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {isProcessing ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  處理中...
+                </>
+              ) : (
+                <>
+                  ✨ 執行 AI 協作
+                </>
+              )}
+            </button>
+          </>
+        ) : (
+          <>
+            {/* 自定義名稱輸入 */}
+            <div className="mb-3">
+              <label className="block text-xs text-gray-500 mb-1.5">物件名稱</label>
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="輸入物件名稱"
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    onSave(editName);
+                  }
+                  if (e.key === 'Escape') {
+                    onClose();
+                  }
+                }}
+                autoFocus
+              />
+            </div>
+
+            {/* 確定按鈕 */}
+            <button
+              onClick={() => onSave(editName)}
+              className="w-full py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600 transition-colors"
+            >
+              確定
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
 
 interface SmartCanvasProps {
   className?: string;
@@ -62,6 +256,8 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
     addLineToDrawing,
     addShapeLayer,
     addMarkerLayer,
+    updateMarkerObjectName,
+    setMarkerIdentifying,
     addPenLayer,
     addPathToPen,
     updatePenPath,
@@ -78,6 +274,13 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
     selectAllLayers,
     addImageLayer,
     setLoading,
+    history,
+    historyIndex,
+    toggleLayerVisibility,
+    toggleLayerLock,
+    removeLayer,
+    reorderLayers,
+    restoreHistoryState,
   } = useCanvasStore();
 
   // 形狀繪製狀態
@@ -93,6 +296,15 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
 
   // AI 工具面板狀態
   const [showAIToolsPanel, setShowAIToolsPanel] = useState(false);
+
+  // 標記編輯彈窗狀態
+  const [showMarkerPopup, setShowMarkerPopup] = useState(false);
+  const [markerPopupPosition, setMarkerPopupPosition] = useState({ x: 0, y: 0 });
+  const [isMarkerAIProcessing, setIsMarkerAIProcessing] = useState(false);
+
+  // 底部面板狀態
+  const [showBottomPanel, setShowBottomPanel] = useState(false);
+  const [bottomPanelTab, setBottomPanelTab] = useState<'layers' | 'history'>('layers');
 
   // 當選中圖層變化時，關閉 AI 工具面板
   useEffect(() => {
@@ -287,7 +499,10 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
 
   const handleStageClick = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
-      if (e.target === e.target.getStage()) selectLayer(null);
+      if (e.target === e.target.getStage()) {
+        selectLayer(null);
+        setShowMarkerPopup(false);
+      }
     },
     [selectLayer]
   );
@@ -299,9 +514,22 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
       // 在 select 或預設狀態下都可以選取
       if (currentTool === 'select' || currentTool === 'text') {
         selectLayer(layerId);
+
+        // 如果點擊的是標記，顯示編輯彈窗
+        const clickedLayer = layers.find(l => l.id === layerId);
+        if (clickedLayer && clickedLayer.type === 'marker') {
+          const stage = e.target.getStage();
+          const pos = stage?.getPointerPosition();
+          if (pos) {
+            setMarkerPopupPosition({ x: pos.x, y: pos.y });
+            setShowMarkerPopup(true);
+          }
+        } else {
+          setShowMarkerPopup(false);
+        }
       }
     },
-    [currentTool, selectLayer]
+    [currentTool, selectLayer, layers]
   );
 
   const handleDragEnd = useCallback(
@@ -370,13 +598,46 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
         return;
       }
 
-      // 標記工具 - 點擊即放置標記
+      // 標記工具 - 點擊即放置標記並進行 AI 識別
       if (currentTool === 'marker') {
         const stage = e.target.getStage();
         const pos = stage?.getPointerPosition();
         if (pos) {
-          addMarkerLayer(pos.x, pos.y);
+          const markerId = addMarkerLayer(pos.x, pos.y);
           saveToHistory('新增標記');
+
+          // 找到最近的圖片圖層進行 AI 物件識別
+          const imageLayers = layers.filter(l => l.type === 'image' && l.visible) as ImageLayer[];
+          if (imageLayers.length > 0) {
+            // 找到包含標記點的圖片
+            const targetImage = imageLayers.find(img => {
+              return pos.x >= img.x && pos.x <= img.x + img.width &&
+                     pos.y >= img.y && pos.y <= img.y + img.height;
+            });
+
+            if (targetImage) {
+              // 設置識別中狀態
+              setMarkerIdentifying(markerId, true);
+
+              // 計算標記相對於圖片的位置
+              const relX = pos.x - targetImage.x;
+              const relY = pos.y - targetImage.y;
+
+              // 調用 AI 識別
+              aiIdentifyObject({
+                image: targetImage.src,
+                x: relX,
+                y: relY,
+                imageWidth: targetImage.width,
+                imageHeight: targetImage.height,
+              }).then(objectName => {
+                updateMarkerObjectName(markerId, objectName);
+              }).catch(error => {
+                console.error('AI 識別失敗:', error);
+                updateMarkerObjectName(markerId, '未知物件');
+              });
+            }
+          }
         }
         return;
       }
@@ -713,6 +974,7 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
             key={layer.id}
             layer={layer as MarkerLayer}
             isDraggable={isDraggable}
+            isSelected={layer.id === selectedLayerId}
             onClick={(e) => handleLayerClick(layer.id, e)}
             onDragEnd={(e) => handleDragEnd(layer.id, e)}
             onTransformEnd={(e) => handleTransformEnd(layer.id, e)}
@@ -768,6 +1030,10 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
         ref={stageRef}
         width={stageSize.width}
         height={stageSize.height}
+        scaleX={canvasState.zoom}
+        scaleY={canvasState.zoom}
+        x={canvasState.panX}
+        y={canvasState.panY}
         onClick={handleStageClick}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
@@ -1256,6 +1522,155 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
           );
         }
 
+        // 文字圖層專用工具列
+        if (selectedLayer.type === 'text') {
+          const textLayer = selectedLayer as TextLayer;
+          return (
+            <div
+              className="absolute bg-white rounded-lg shadow-lg border border-gray-200 px-3 py-2 flex items-center gap-2 z-50"
+              style={{
+                top: '12px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+              }}
+            >
+              {/* 文字顏色 */}
+              <div className="relative">
+                <input
+                  type="color"
+                  value={textLayer.fill || '#000000'}
+                  onChange={(e) => updateLayer(selectedLayerId, { fill: e.target.value })}
+                  className="w-6 h-6 rounded cursor-pointer border border-gray-200"
+                  title="文字顏色"
+                />
+              </div>
+
+              <div className="w-px h-6 bg-gray-200" />
+
+              {/* 字體選擇 */}
+              <select
+                value={textLayer.fontFamily || 'Inter'}
+                onChange={(e) => updateLayer(selectedLayerId, { fontFamily: e.target.value })}
+                className="px-2 py-1 text-sm border border-gray-200 rounded focus:outline-none focus:border-blue-400 bg-white"
+                title="字體"
+              >
+                <option value="Inter">Inter</option>
+                <option value="Noto Sans TC">Noto Sans TC</option>
+                <option value="Arial">Arial</option>
+                <option value="Helvetica">Helvetica</option>
+                <option value="Georgia">Georgia</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Courier New">Courier New</option>
+                <option value="Microsoft JhengHei">微軟正黑體</option>
+                <option value="PingFang TC">蘋方</option>
+              </select>
+
+              <div className="w-px h-6 bg-gray-200" />
+
+              {/* 字重 */}
+              <select
+                value={textLayer.fontWeight || 'normal'}
+                onChange={(e) => updateLayer(selectedLayerId, { fontWeight: e.target.value })}
+                className="px-2 py-1 text-sm border border-gray-200 rounded focus:outline-none focus:border-blue-400 bg-white"
+                title="字重"
+              >
+                <option value="normal">Regular</option>
+                <option value="500">Medium</option>
+                <option value="600">Semibold</option>
+                <option value="bold">Bold</option>
+                <option value="100">Thin</option>
+                <option value="300">Light</option>
+              </select>
+
+              <div className="w-px h-6 bg-gray-200" />
+
+              {/* 字體大小 */}
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  value={textLayer.fontSize || 24}
+                  onChange={(e) => updateLayer(selectedLayerId, { fontSize: Number(e.target.value) })}
+                  className="w-14 px-2 py-1 text-sm border border-gray-200 rounded text-center focus:outline-none focus:border-blue-400"
+                  min={8}
+                  max={200}
+                  title="字體大小"
+                />
+              </div>
+
+              <div className="w-px h-6 bg-gray-200" />
+
+              {/* 文字對齊 */}
+              <div className="flex items-center gap-0.5">
+                <button
+                  onClick={() => updateLayer(selectedLayerId, { align: 'left' })}
+                  className={`p-1.5 rounded transition-colors ${textLayer.align === 'left' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-gray-100'}`}
+                  title="靠左對齊"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                    <line x1="3" y1="12" x2="15" y2="12" />
+                    <line x1="3" y1="18" x2="18" y2="18" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => updateLayer(selectedLayerId, { align: 'center' })}
+                  className={`p-1.5 rounded transition-colors ${textLayer.align === 'center' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-gray-100'}`}
+                  title="置中對齊"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                    <line x1="6" y1="12" x2="18" y2="12" />
+                    <line x1="4" y1="18" x2="20" y2="18" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => updateLayer(selectedLayerId, { align: 'right' })}
+                  className={`p-1.5 rounded transition-colors ${textLayer.align === 'right' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-gray-100'}`}
+                  title="靠右對齊"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                    <line x1="9" y1="12" x2="21" y2="12" />
+                    <line x1="6" y1="18" x2="21" y2="18" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="w-px h-6 bg-gray-200" />
+
+              {/* 斜體 */}
+              <button
+                onClick={() => updateLayer(selectedLayerId, { fontStyle: textLayer.fontStyle === 'italic' ? 'normal' : 'italic' })}
+                className={`p-1.5 rounded transition-colors ${textLayer.fontStyle === 'italic' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-gray-100'}`}
+                title="斜體"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="19" y1="4" x2="10" y2="4" />
+                  <line x1="14" y1="20" x2="5" y2="20" />
+                  <line x1="15" y1="4" x2="9" y2="20" />
+                </svg>
+              </button>
+
+              <div className="w-px h-6 bg-gray-200" />
+
+              {/* 設定 */}
+              <button className="p-1.5 text-gray-500 hover:bg-gray-100 rounded" title="更多設定">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+              </button>
+
+              {/* 下載 */}
+              <button className="p-1.5 text-gray-500 hover:bg-gray-100 rounded" title="下載">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                </svg>
+              </button>
+            </div>
+          );
+        }
+
         // 非圖片圖層，顯示通用工具列
         return (
           <div
@@ -1374,30 +1789,320 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
         );
       })()}
 
-      {/* 底部工具列 */}
-      <div className="absolute bottom-4 left-4 flex items-center gap-2 bg-white rounded-lg shadow-sm px-3 py-2">
-        <button className="p-1 hover:bg-gray-100 rounded text-gray-600">
-          <span className="text-lg">⚙️</span>
-        </button>
-        <div className="flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-600 rounded text-sm">
-          <span>🔥</span>
-          <span>100</span>
+      {/* 底部左側面板 - 圖層和歷史記錄 */}
+      <div className="absolute bottom-4 left-4 z-40">
+        {/* 展開的面板 */}
+        {showBottomPanel && (
+          <div className="mb-2 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden" style={{ width: '280px', maxHeight: '320px' }}>
+            {/* 面板標籤 */}
+            <div className="flex border-b border-gray-100">
+              <button
+                onClick={() => setBottomPanelTab('layers')}
+                className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+                  bottomPanelTab === 'layers'
+                    ? 'text-blue-600 border-b-2 border-blue-500 bg-blue-50/50'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                圖層
+              </button>
+              <button
+                onClick={() => setBottomPanelTab('history')}
+                className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+                  bottomPanelTab === 'history'
+                    ? 'text-blue-600 border-b-2 border-blue-500 bg-blue-50/50'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                歷史記錄
+              </button>
+            </div>
+
+            {/* 面板內容 */}
+            <div className="overflow-y-auto" style={{ maxHeight: '260px' }}>
+              {bottomPanelTab === 'layers' ? (
+                /* 圖層列表 */
+                <div className="p-2">
+                  {layers.length === 0 ? (
+                    <div className="text-center text-gray-400 text-sm py-8">
+                      尚無圖層
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      {[...layers].sort((a, b) => b.zIndex - a.zIndex).map((layer, index) => (
+                        <div
+                          key={layer.id}
+                          onClick={() => selectLayer(layer.id)}
+                          className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
+                            selectedLayerId === layer.id
+                              ? 'bg-blue-50 border border-blue-200'
+                              : 'hover:bg-gray-50 border border-transparent'
+                          }`}
+                        >
+                          {/* 圖層預覽縮圖 */}
+                          <div className="w-10 h-10 bg-gray-100 rounded flex items-center justify-center overflow-hidden flex-shrink-0">
+                            {layer.type === 'image' && (layer as ImageLayer).src ? (
+                              <img
+                                src={(layer as ImageLayer).src}
+                                alt={layer.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : layer.type === 'text' ? (
+                              <span className="text-xs text-gray-500">T</span>
+                            ) : layer.type === 'shape' ? (
+                              <span className="text-xs text-gray-500">⬢</span>
+                            ) : layer.type === 'marker' ? (
+                              <div
+                                className="w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                                style={{ backgroundColor: (layer as MarkerLayer).color }}
+                              >
+                                {(layer as MarkerLayer).number}
+                              </div>
+                            ) : layer.type === 'drawing' ? (
+                              <span className="text-xs text-gray-500">✏️</span>
+                            ) : (
+                              <span className="text-xs text-gray-500">📄</span>
+                            )}
+                          </div>
+
+                          {/* 圖層名稱 */}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm text-gray-800 truncate">{layer.name}</div>
+                            <div className="text-xs text-gray-400">{layer.type}</div>
+                          </div>
+
+                          {/* 圖層操作按鈕 */}
+                          <div className="flex items-center gap-1">
+                            {/* 可見性 */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleLayerVisibility(layer.id);
+                              }}
+                              className={`p-1 rounded hover:bg-gray-200 ${layer.visible ? 'text-gray-600' : 'text-gray-300'}`}
+                              title={layer.visible ? '隱藏' : '顯示'}
+                            >
+                              {layer.visible ? (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                  <circle cx="12" cy="12" r="3" />
+                                </svg>
+                              ) : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                                  <line x1="1" y1="1" x2="23" y2="23" />
+                                </svg>
+                              )}
+                            </button>
+                            {/* 鎖定 */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleLayerLock(layer.id);
+                              }}
+                              className={`p-1 rounded hover:bg-gray-200 ${layer.locked ? 'text-blue-500' : 'text-gray-300'}`}
+                              title={layer.locked ? '解鎖' : '鎖定'}
+                            >
+                              {layer.locked ? (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                                </svg>
+                              ) : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                  <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+                                </svg>
+                              )}
+                            </button>
+                            {/* 刪除 */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeLayer(layer.id);
+                              }}
+                              className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-500"
+                              title="刪除"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* 歷史記錄列表 */
+                <div className="p-2">
+                  {history.length === 0 ? (
+                    <div className="text-center text-gray-400 text-sm py-8">
+                      尚無歷史記錄
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      {history.map((entry, index) => (
+                        <div
+                          key={entry.id}
+                          className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
+                            index === historyIndex
+                              ? 'bg-blue-50 border border-blue-200'
+                              : index < historyIndex
+                              ? 'hover:bg-gray-50 border border-transparent'
+                              : 'opacity-50 hover:bg-gray-50 border border-transparent'
+                          }`}
+                          onClick={() => {
+                            // 直接跳轉到指定歷史狀態
+                            restoreHistoryState(index);
+                          }}
+                        >
+                          {/* 歷史狀態指示 */}
+                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                            index === historyIndex ? 'bg-blue-500' : index < historyIndex ? 'bg-gray-400' : 'bg-gray-200'
+                          }`} />
+
+                          {/* 操作名稱 */}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm text-gray-800 truncate">{entry.action}</div>
+                            <div className="text-xs text-gray-400">
+                              {new Date(entry.timestamp).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            </div>
+                          </div>
+
+                          {/* 當前狀態標記 */}
+                          {index === historyIndex && (
+                            <span className="text-xs text-blue-500 font-medium">當前</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 底部工具列 */}
+        <div className="flex items-center gap-2 bg-white rounded-lg shadow-lg border border-gray-200 px-3 py-2">
+          {/* 圖層按鈕 */}
+          <button
+            onClick={() => {
+              setShowBottomPanel(!showBottomPanel);
+              setBottomPanelTab('layers');
+            }}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors ${
+              showBottomPanel && bottomPanelTab === 'layers'
+                ? 'bg-blue-50 text-blue-600'
+                : 'hover:bg-gray-100 text-gray-600'
+            }`}
+            title="圖層"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polygon points="12 2 2 7 12 12 22 7 12 2" />
+              <polyline points="2 17 12 22 22 17" />
+              <polyline points="2 12 12 17 22 12" />
+            </svg>
+            <span className="text-sm">圖層</span>
+          </button>
+
+          <span className="text-gray-200">|</span>
+
+          {/* 縮放控制 */}
+          <button
+            className="p-1.5 hover:bg-gray-100 rounded text-gray-600"
+            onClick={() => setZoom(Math.max(0.1, canvasState.zoom - 0.1))}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              <line x1="8" y1="11" x2="14" y2="11" />
+            </svg>
+          </button>
+          <span className="text-sm text-gray-600 min-w-[50px] text-center font-medium">
+            {Math.round(canvasState.zoom * 100)}%
+          </span>
+          <button
+            className="p-1.5 hover:bg-gray-100 rounded text-gray-600"
+            onClick={() => setZoom(Math.min(5, canvasState.zoom + 0.1))}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              <line x1="11" y1="8" x2="11" y2="14" />
+              <line x1="8" y1="11" x2="14" y2="11" />
+            </svg>
+          </button>
         </div>
-        <span className="text-gray-300">|</span>
-        <button
-          className="p-1 hover:bg-gray-100 rounded text-gray-600"
-          onClick={() => setZoom(Math.max(0.1, canvasState.zoom - 0.1))}
-        >
-          −
-        </button>
-        <span className="text-sm text-gray-600 min-w-[40px] text-center">{Math.round(canvasState.zoom * 100)}%</span>
-        <button
-          className="p-1 hover:bg-gray-100 rounded text-gray-600"
-          onClick={() => setZoom(Math.min(5, canvasState.zoom + 0.1))}
-        >
-          +
-        </button>
       </div>
+
+      {/* 標記編輯彈窗 */}
+      {showMarkerPopup && selectedLayerId && (() => {
+        const selectedMarker = layers.find(l => l.id === selectedLayerId && l.type === 'marker') as MarkerLayer | undefined;
+        if (!selectedMarker) return null;
+
+        // 找到標記所在的圖片
+        const markerCenterX = selectedMarker.x + selectedMarker.width / 2;
+        const markerCenterY = selectedMarker.y + selectedMarker.height / 2;
+        const targetImageLayer = (layers.filter(l => l.type === 'image' && l.visible) as ImageLayer[]).find(img => {
+          return markerCenterX >= img.x && markerCenterX <= img.x + img.width &&
+                 markerCenterY >= img.y && markerCenterY <= img.y + img.height;
+        });
+
+        return (
+          <MarkerEditPopup
+            marker={selectedMarker}
+            position={markerPopupPosition}
+            onSave={(name) => {
+              updateMarkerObjectName(selectedMarker.id, name);
+              setShowMarkerPopup(false);
+            }}
+            onClose={() => setShowMarkerPopup(false)}
+            isProcessing={isMarkerAIProcessing}
+            onAIAction={async (prompt) => {
+              if (!targetImageLayer) {
+                alert('請先在圖片上放置標記');
+                return;
+              }
+
+              setIsMarkerAIProcessing(true);
+              try {
+                // 計算標記相對於圖片的位置百分比
+                const relX = markerCenterX - targetImageLayer.x;
+                const relY = markerCenterY - targetImageLayer.y;
+                const xPercent = Math.round((relX / targetImageLayer.width) * 100);
+                const yPercent = Math.round((relY / targetImageLayer.height) * 100);
+
+                // 構建帶位置資訊的 AI 指令
+                const positionPrompt = `在圖片中位於 ${xPercent}% 從左邊、${yPercent}% 從上方的位置（標記為「${selectedMarker.objectName || '標記點'}」），${prompt}`;
+
+                console.log('AI 協作指令:', positionPrompt);
+
+                // 調用 AI 編輯
+                const results = await aiEditImage({
+                  image: targetImageLayer.src,
+                  prompt: positionPrompt,
+                });
+
+                if (results[0]) {
+                  // 將結果添加為新圖層
+                  addImageLayer(results[0], `AI 協作: ${prompt.substring(0, 20)}...`);
+                  saveToHistory('AI 協作編輯');
+                  setShowMarkerPopup(false);
+                }
+              } catch (error) {
+                console.error('AI 協作失敗:', error);
+                alert('AI 協作失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+              } finally {
+                setIsMarkerAIProcessing(false);
+              }
+            }}
+          />
+        );
+      })()}
     </div>
   );
 };

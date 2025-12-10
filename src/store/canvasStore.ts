@@ -51,6 +51,8 @@ interface CanvasStore {
   addLineToDrawing: (layerId: string, line: DrawingLine) => void;
   addShapeLayer: (shapeType: ShapeType, x: number, y: number, width: number, height: number) => string;
   addMarkerLayer: (x: number, y: number) => string;
+  updateMarkerObjectName: (id: string, objectName: string) => void;
+  setMarkerIdentifying: (id: string, isIdentifying: boolean) => void;
   resetMarkerCounter: () => void;
   addPenLayer: () => string;
   addPathToPen: (layerId: string, path: PenPath) => void;
@@ -68,6 +70,7 @@ interface CanvasStore {
   saveToHistory: (action: string) => void;
   undo: () => void;
   redo: () => void;
+  restoreHistoryState: (index: number) => void;
   exportCanvas: () => Promise<string>;
   clearCanvas: () => void;
   getSelectedLayer: () => Layer | null;
@@ -320,6 +323,26 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     } as Omit<MarkerLayer, 'id' | 'zIndex'>);
   },
 
+  updateMarkerObjectName: (id, objectName) => {
+    set((state) => ({
+      layers: state.layers.map((layer) =>
+        layer.id === id && layer.type === 'marker'
+          ? { ...layer, objectName, isIdentifying: false } as MarkerLayer
+          : layer
+      ),
+    }));
+  },
+
+  setMarkerIdentifying: (id, isIdentifying) => {
+    set((state) => ({
+      layers: state.layers.map((layer) =>
+        layer.id === id && layer.type === 'marker'
+          ? { ...layer, isIdentifying } as MarkerLayer
+          : layer
+      ),
+    }));
+  },
+
   resetMarkerCounter: () => {
     set({ markerCounter: 0 });
   },
@@ -425,6 +448,18 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         layers: JSON.parse(JSON.stringify(nextEntry.layers)),
         canvasState: { ...nextEntry.canvasState },
         historyIndex: historyIndex + 1,
+      });
+    }
+  },
+
+  restoreHistoryState: (index) => {
+    const { history } = get();
+    if (index >= 0 && index < history.length) {
+      const entry = history[index];
+      set({
+        layers: JSON.parse(JSON.stringify(entry.layers)),
+        canvasState: { ...entry.canvasState },
+        historyIndex: index,
       });
     }
   },

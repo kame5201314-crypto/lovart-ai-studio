@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { LovartToolbar, LovartSidebar, LovartHeader } from './components/lovart';
 import { SmartCanvas, ImageGeneratorBlock, VideoGeneratorBlock } from './components/canvas';
-import { ContextMenu, getImageContextMenuItems, OnboardingTutorial, NanoBananaProTip, SelectionToolbar } from './components/ui';
+import { ContextMenu, getImageContextMenuItems, NanoBananaProTip, SelectionToolbar } from './components/ui';
 import { StudioPanel } from './components/studio';
+import { AuthModal, ImageGallery } from './components/auth';
+import { onUserStateChanged, uploadImage, getCurrentUser } from './lib/firebase';
 import { useCanvasStore } from './store/canvasStore';
 import {
   aiEditImage,
@@ -14,6 +16,7 @@ import {
 } from './services/aiService';
 import type {
   AIModel, ImageLayer } from './types';
+import { Menu, X, MessageSquare, Wrench } from 'lucide-react';
 
 function App() {
   const {
@@ -40,10 +43,30 @@ function App() {
   });
   const [showStudioPanel, setShowStudioPanel] = useState(false);
   const [projectName, setProjectName] = useState('未命名');
-  const [showTutorial, setShowTutorial] = useState(true);
   const [showNanoBananaTip, setShowNanoBananaTip] = useState(false);
   const [showImageGenerator, setShowImageGenerator] = useState(false);
   const [showVideoGenerator, setShowVideoGenerator] = useState(false);
+
+  // RWD 響應式狀態
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+  const [showMobileToolbar, setShowMobileToolbar] = useState(false);
+
+  // Firebase 用戶狀態
+  const [user, setUser] = useState<{ email: string; displayName: string } | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showImageGallery, setShowImageGallery] = useState(false);
+
+  // 監聽用戶登入狀態
+  useEffect(() => {
+    const unsubscribe = onUserStateChanged((firebaseUser) => {
+      if (firebaseUser) {
+        setUser({ email: firebaseUser.email || '', displayName: firebaseUser.displayName || '用戶' });
+      } else {
+        setUser(null);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   // 對話歷史
   const [chatHistory, setChatHistory] = useState([
@@ -80,6 +103,20 @@ function App() {
   // 獲取當前選中的圖層
   const selectedLayer = layers.find((l) => l.id === selectedLayerId);
   const selectedImage = selectedLayer?.type === 'image' ? (selectedLayer as ImageLayer).src : undefined;
+
+  // 儲存圖片到 Firebase
+  const handleSaveImage = async () => {
+    if (!user) { setShowAuthModal(true); return; }
+    const imageLayer = layers.filter(l => l.type === 'image').pop() as ImageLayer | undefined;
+    if (!imageLayer?.src) { alert('沒有可儲存的圖片'); return; }
+    setLoading(true, '儲存到雲端...');
+    try {
+      await uploadImage(imageLayer.src, projectName + '_' + Date.now() + '.png');
+      alert('圖片已儲存到雲端！');
+    } catch (error) {
+      alert('儲存失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+    } finally { setLoading(false); }
+  };
 
   // AI 功能處理函數
   const handleAIEdit = async (prompt: string) => {
@@ -304,18 +341,24 @@ function App() {
         const url = URL.createObjectURL(file);
         // 創建影片縮圖
         const video = document.createElement('video');
-        video.preload = 'metadata';
-        video.onloadedmetadata = () => {
-          video.currentTime = 1; // 跳到第1秒取縮圖
-        };
-        video.onseeked = () => {
+        video.preload = 'auto';
+        video.muted = true; // 靜音以允許自動播放
+        video.playsInline = true;
+        video.crossOrigin = 'anonymous';
+
+        let thumbnailCaptured = false;
+
+        const captureThumbnail = () => {
+          if (thumbnailCaptured) return;
+          thumbnailCaptured = true;
+
           const canvas = document.createElement('canvas');
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 360;
           const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(video, 0, 0);
-            const thumbnail = canvas.toDataURL('image/jpeg');
+          if (ctx && video.videoWidth > 0) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const thumbnail = canvas.toDataURL('image/jpeg', 0.8);
             let width = video.videoWidth;
             let height = video.videoHeight;
             const maxSize = 640;
@@ -330,20 +373,73 @@ function App() {
             }
             addImageLayer(thumbnail, `影片: ${file.name}`, width, height);
             saveToHistory('上傳影片');
+            console.log('影片縮圖已創建:', file.name);
+          } else {
+            // 如果無法取得縮圖，使用預設尺寸
+            console.warn('無法取得影片縮圖，使用預設圖片');
+            addImageLayer('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NDAiIGhlaWdodD0iMzYwIiB2aWV3Qm94PSIwIDAgNjQwIDM2MCI+PHJlY3QgZmlsbD0iIzMzMyIgd2lkdGg9IjY0MCIgaGVpZ2h0PSIzNjAiLz48cG9seWdvbiBmaWxsPSIjZmZmIiBwb2ludHM9IjI1MCwxMjAgNDAwLDE4MCAyNTAsMjQwIi8+PHRleHQgeD0iMzIwIiB5PSIzMDAiIGZpbGw9IiNmZmYiIGZvbnQtc2l6ZT0iMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiPuW9seeJhzwvdGV4dD48L3N2Zz4=', `影片: ${file.name}`, 640, 360);
+            saveToHistory('上傳影片');
           }
+          video.pause();
           URL.revokeObjectURL(url);
         };
+
+        video.onloadeddata = () => {
+          // 嘗試跳到影片中間位置取縮圖
+          const seekTime = Math.min(video.duration * 0.1, 1);
+          if (seekTime > 0 && isFinite(seekTime)) {
+            video.currentTime = seekTime;
+          } else {
+            captureThumbnail();
+          }
+        };
+
+        video.onseeked = () => {
+          captureThumbnail();
+        };
+
+        video.onerror = (err) => {
+          console.error('影片載入失敗:', err);
+          alert('影片載入失敗，請確認檔案格式是否支援');
+          URL.revokeObjectURL(url);
+        };
+
+        // 設定超時，避免卡住
+        setTimeout(() => {
+          if (!thumbnailCaptured) {
+            console.warn('影片載入超時，使用預設縮圖');
+            captureThumbnail();
+          }
+        }, 5000);
+
         video.src = url;
+        video.load();
       }
     };
     input.click();
   }, [addImageLayer, saveToHistory]);
+
+  // 當前對話ID
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
 
   // 處理 AI 訊息
   const handleSendMessage = async (message: string) => {
     console.log('=== handleSendMessage 開始 ===');
     console.log('訊息:', message);
     console.log('選擇的模型:', selectedModel);
+
+    // 如果是新對話，創建一個新的歷史記錄
+    if (!currentChatId) {
+      const newChatId = Date.now().toString();
+      const newChat = {
+        id: newChatId,
+        title: message.substring(0, 30) + (message.length > 30 ? '...' : ''),
+        preview: message.substring(0, 50),
+        timestamp: new Date(),
+      };
+      setChatHistory(prev => [newChat, ...prev]);
+      setCurrentChatId(newChatId);
+    }
 
     setLoading(true, '正在生成圖片...');
     try {
@@ -371,6 +467,21 @@ function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 刪除歷史對話
+  const handleDeleteHistory = (chatId: string) => {
+    setChatHistory(prev => prev.filter(item => item.id !== chatId));
+    // 如果刪除的是當前對話，重置
+    if (currentChatId === chatId) {
+      setCurrentChatId(null);
+    }
+  };
+
+  // 新建對話
+  const handleNewChat = () => {
+    setCurrentChatId(null);
+    console.log('新建對話');
   };
 
   // 鍵盤快捷鍵
@@ -437,12 +548,101 @@ function App() {
         projectName={projectName}
         onProjectNameChange={(name) => setProjectName(name)}
         onUploadImage={handleUploadImage}
+        user={user}
+        onLoginClick={() => setShowAuthModal(true)}
+        onViewGallery={() => setShowImageGallery(true)}
+        onSaveImage={handleSaveImage}
       />
 
       {/* 主要內容區 */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* 左側工具列 */}
-        <LovartToolbar
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* 移動端底部導航按鈕 */}
+        <div className="lg:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-white rounded-full shadow-lg px-2 py-2 border border-gray-200">
+          <button
+            onClick={() => {
+              setShowMobileToolbar(!showMobileToolbar);
+              setShowMobileSidebar(false);
+            }}
+            className={`p-3 rounded-full transition-colors ${showMobileToolbar ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+          >
+            <Wrench size={20} />
+          </button>
+          <button
+            onClick={() => {
+              setShowMobileSidebar(!showMobileSidebar);
+              setShowMobileToolbar(false);
+            }}
+            className={`p-3 rounded-full transition-colors ${showMobileSidebar ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+          >
+            <MessageSquare size={20} />
+          </button>
+        </div>
+
+        {/* 移動端工具列覆蓋層 */}
+        {showMobileToolbar && (
+          <div className="lg:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setShowMobileToolbar(false)}>
+            <div className="absolute left-0 top-0 bottom-16 w-16 bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <LovartToolbar
+                onToolChange={(tool: string) => {
+                  switch (tool) {
+                    case 'select': setTool('select'); break;
+                    case 'hand': setTool('move'); break;
+                    case 'mark': setTool('marker'); break;
+                    case 'text': setTool('text'); addTextLayer('雙擊編輯文字'); break;
+                    case 'pencil': setTool('pencil'); if (currentTool !== 'pencil' && currentTool !== 'brush') addDrawingLayer(); break;
+                    case 'pen': setTool('pen'); break;
+                    case 'rectangle': setTool('rectangle'); break;
+                    case 'circle': setTool('circle'); break;
+                    case 'triangle': setTool('triangle'); break;
+                    case 'star': setTool('star'); break;
+                    case 'arrow': setTool('arrow'); break;
+                    case 'hexagon': setTool('hexagon'); break;
+                  }
+                  setShowMobileToolbar(false);
+                }}
+                onUploadImage={() => { handleUploadImage(); setShowMobileToolbar(false); }}
+                onUploadVideo={() => { handleUploadVideo(); setShowMobileToolbar(false); }}
+                onOpenImageGenerator={() => { setShowImageGenerator(true); setShowMobileToolbar(false); }}
+                onOpenVideoGenerator={() => { setShowVideoGenerator(true); setShowMobileToolbar(false); }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* 移動端 AI 側邊欄覆蓋層 */}
+        {showMobileSidebar && (
+          <div className="lg:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setShowMobileSidebar(false)}>
+            <div className="absolute right-0 top-0 bottom-16 w-full max-w-[360px] bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <button
+                onClick={() => setShowMobileSidebar(false)}
+                className="absolute top-3 right-3 p-2 hover:bg-gray-100 rounded-lg z-10"
+              >
+                <X size={20} />
+              </button>
+              <LovartSidebar
+                onSendMessage={(msg) => { handleSendMessage(msg); }}
+                onSelectExample={(example) => handleSendMessage(example.description)}
+                onOpenStudio={() => { setShowStudioPanel(true); setShowMobileSidebar(false); }}
+                chatHistory={chatHistory}
+                generatedFiles={generatedFiles}
+                isGenerating={isLoading}
+                lastGeneratedImage={layers.length > 0 ? (layers[layers.length - 1] as ImageLayer)?.src : undefined}
+                onNewChat={handleNewChat}
+                onSelectHistory={(chatId) => { setCurrentChatId(chatId); }}
+                onDeleteHistory={handleDeleteHistory}
+                onShare={() => { navigator.clipboard.writeText(window.location.href); alert('分享連結已複製到剪貼板！'); }}
+                onSelectFile={(fileId) => {
+                  const file = generatedFiles.find((f) => f.id === fileId);
+                  if (file) { addImageLayer(file.thumbnail, file.name); saveToHistory('添加生成的文件'); }
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* 左側工具列 - 桌面版 */}
+        <div className="hidden lg:block">
+          <LovartToolbar
           onToolChange={(tool: string) => {
             console.log('=== App onToolChange 被呼叫 ===');
             console.log('工具參數:', tool);
@@ -520,6 +720,7 @@ function App() {
             setShowImageGenerator(false);
           }}
         />
+        </div>
 
         {/* 中央畫布區 */}
         <div className="flex-1 relative" onContextMenu={handleContextMenu}>
@@ -617,14 +818,13 @@ function App() {
           generatedFiles={generatedFiles}
           isGenerating={isLoading}
           lastGeneratedImage={layers.length > 0 ? (layers[layers.length - 1] as ImageLayer)?.src : undefined}
-          onNewChat={() => {
-            console.log('新建對話');
-            // 清空當前對話並開始新對話
-          }}
+          onNewChat={handleNewChat}
           onSelectHistory={(chatId) => {
             console.log('選擇歷史對話:', chatId);
-            // 載入歷史對話
+            setCurrentChatId(chatId);
+            // TODO: 載入歷史對話的訊息
           }}
+          onDeleteHistory={handleDeleteHistory}
           onShare={() => {
             console.log('分享對話');
             // 複製分享連結到剪貼板
@@ -650,18 +850,24 @@ function App() {
         onImageGenerated={handleImageGenerated}
       />
 
-      {/* 新手引導教學 */}
-      {showTutorial && (
-        <OnboardingTutorial onComplete={() => {
-          setShowTutorial(false);
-          setShowNanoBananaTip(true);
-        }} />
-      )}
-
       {/* Nano Banana Pro 提示 */}
       {showNanoBananaTip && (
         <NanoBananaProTip onClose={() => setShowNanoBananaTip(false)} />
       )}
+
+      {/* 登入/註冊彈窗 */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onAuthSuccess={(userData) => { setUser(userData); setShowAuthModal(false); }}
+      />
+
+      {/* 圖片庫 */}
+      <ImageGallery
+        isOpen={showImageGallery}
+        onClose={() => setShowImageGallery(false)}
+        onSelectImage={(imageUrl) => { addImageLayer(imageUrl, '從雲端載入'); saveToHistory('從雲端載入圖片'); }}
+      />
     </div>
   );
 }

@@ -1,17 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronDown, Home, FolderOpen, FilePlus, Trash2, Image, Undo2, Redo2, Copy, Eye, ZoomIn, ZoomOut, Link2 } from 'lucide-react';
+import { ChevronDown, Home, FolderOpen, FilePlus, Trash2, Image, Undo2, Redo2, Copy, Eye, ZoomIn, ZoomOut, HelpCircle, Save } from 'lucide-react';
 import { useCanvasStore } from '../../store/canvasStore';
+import { UserMenu } from '../auth';
 
 interface LovartHeaderProps {
   projectName?: string;
   onProjectNameChange?: (name: string) => void;
   onUploadImage?: () => void;
+  onShowTutorial?: () => void;
+  user?: { email: string; displayName: string } | null;
+  onLoginClick?: () => void;
+  onViewGallery?: () => void;
+  onSaveImage?: () => void;
 }
 
 export const LovartHeader: React.FC<LovartHeaderProps> = ({
   projectName = '未命名專案',
   onProjectNameChange,
   onUploadImage,
+  onShowTutorial,
+  user,
+  onLoginClick,
+  onViewGallery,
+  onSaveImage,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(projectName);
@@ -21,12 +32,10 @@ export const LovartHeader: React.FC<LovartHeaderProps> = ({
 
   const { undo, redo, duplicateLayer, setZoom, canvasState, selectedLayerId } = useCanvasStore();
 
-  // 同步外部傳入的 projectName
   useEffect(() => {
     setName(projectName);
   }, [projectName]);
 
-  // 自動聚焦輸入框
   useEffect(() => {
     if (isEditing && inputRef.current) {
       inputRef.current.focus();
@@ -34,7 +43,6 @@ export const LovartHeader: React.FC<LovartHeaderProps> = ({
     }
   }, [isEditing]);
 
-  // 點擊外部關閉選單
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -64,34 +72,35 @@ export const LovartHeader: React.FC<LovartHeaderProps> = ({
 
   const menuItems = [
     { id: 'home', label: '首頁', icon: <Home size={16} />, onClick: () => window.location.reload() },
-    { id: 'projects', label: '專案庫', icon: <FolderOpen size={16} />, onClick: () => alert('專案庫功能開發中...') },
+    { id: 'projects', label: '我的作品庫', icon: <FolderOpen size={16} />, onClick: () => onViewGallery?.() },
     { type: 'divider' },
     { id: 'new', label: '新建項目', icon: <FilePlus size={16} />, onClick: () => window.location.reload() },
     { id: 'delete', label: '刪除目前項目', icon: <Trash2 size={16} />, onClick: () => { if (confirm('確定要刪除目前項目嗎？')) window.location.reload(); } },
     { type: 'divider' },
     { id: 'import', label: '導入圖片', icon: <Image size={16} />, onClick: () => onUploadImage?.() },
+    { id: 'save', label: '儲存到雲端', icon: <Save size={16} />, onClick: () => onSaveImage?.() },
     { type: 'divider' },
     { id: 'undo', label: '撤銷', icon: <Undo2 size={16} />, shortcut: 'Ctrl + Z', onClick: () => undo() },
-    { id: 'redo', label: '重做', icon: <Redo2 size={16} />, shortcut: 'Ctrl + 轉移 + Z', onClick: () => redo() },
+    { id: 'redo', label: '重做', icon: <Redo2 size={16} />, shortcut: 'Ctrl + Shift + Z', onClick: () => redo() },
     { id: 'duplicate', label: '複製對象', icon: <Copy size={16} />, shortcut: 'Ctrl + D', onClick: () => selectedLayerId && duplicateLayer(selectedLayerId) },
     { type: 'divider' },
-    { id: 'showAll', label: '顯示畫布所有圖片', icon: <Eye size={16} />, shortcut: '轉移 + 1', onClick: () => setZoom(1) },
+    { id: 'showAll', label: '顯示畫布所有圖片', icon: <Eye size={16} />, shortcut: 'Shift + 1', onClick: () => setZoom(1) },
     { id: 'zoomIn', label: '放大', icon: <ZoomIn size={16} />, shortcut: 'Ctrl + +', onClick: handleZoomIn },
     { id: 'zoomOut', label: '縮小', icon: <ZoomOut size={16} />, shortcut: 'Ctrl + -', onClick: handleZoomOut },
+    { type: 'divider' },
+    { id: 'tutorial', label: '查看教學', icon: <HelpCircle size={16} />, onClick: () => onShowTutorial?.() },
   ];
 
   return (
     <div className="h-12 bg-white border-b border-gray-200 flex items-center px-4 relative z-50">
-      {/* Logo 與選單 */}
       <div className="flex items-center gap-3" ref={menuRef}>
         <button
           onClick={() => setShowLogoMenu(!showLogoMenu)}
           className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center hover:bg-gray-800 transition-colors"
         >
-          <span className="text-white text-sm font-bold">L</span>
+          <span className="text-white text-sm font-bold">M</span>
         </button>
 
-        {/* Logo 下拉選單 */}
         {showLogoMenu && (
           <div className="absolute top-full left-4 mt-1 bg-white rounded-xl shadow-xl border border-gray-200 py-2 min-w-[220px] z-50">
             {menuItems.map((item, index) => (
@@ -119,7 +128,6 @@ export const LovartHeader: React.FC<LovartHeaderProps> = ({
           </div>
         )}
 
-        {/* 專案名稱 */}
         <div className="flex items-center gap-1">
           {isEditing ? (
             <input
@@ -141,8 +149,11 @@ export const LovartHeader: React.FC<LovartHeaderProps> = ({
           ) : (
             <button
               onClick={() => setIsEditing(true)}
-              className="flex items-center gap-1 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 px-2 py-1 rounded"
+              className="flex items-center gap-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 px-2 py-1 rounded"
             >
+              <span className="w-5 h-5 bg-gray-800 rounded flex items-center justify-center flex-shrink-0">
+                <span className="text-white text-xs font-bold">M</span>
+              </span>
               <span>{name || '未命名專案'}</span>
               <ChevronDown size={14} className="text-gray-400" />
             </button>
@@ -150,8 +161,23 @@ export const LovartHeader: React.FC<LovartHeaderProps> = ({
         </div>
       </div>
 
-      {/* 右側可擴展區域 */}
       <div className="flex-1" />
+      <div className="flex items-center gap-3">
+        {user && (
+          <button
+            onClick={onSaveImage}
+            className="flex items-center gap-2 px-3 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
+          >
+            <Save size={16} />
+            儲存
+          </button>
+        )}
+        <UserMenu
+          user={user || null}
+          onLoginClick={onLoginClick || (() => {})}
+          onViewGallery={onViewGallery}
+        />
+      </div>
     </div>
   );
 };
