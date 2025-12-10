@@ -1,20 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Copy,
-  Clipboard,
-  Trash2,
-  Lock,
-  Unlock,
-  Eye,
-  EyeOff,
   ChevronRight,
-  ArrowUp,
-  ArrowDown,
-  ChevronsUp,
-  ChevronsDown,
-  MessageSquare,
-  FolderPlus,
-  Download,
   FileImage,
   FileType,
 } from 'lucide-react';
@@ -155,7 +141,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
   );
 };
 
-// 新的右鍵選單項目 (符合圖片樣式)
+// 右鍵選單項目 (繁體中文)
 export const getImageContextMenuItems = (handlers: {
   onCopy?: () => void;
   onPaste?: () => void;
@@ -177,70 +163,70 @@ export const getImageContextMenuItems = (handlers: {
 }): ContextMenuItem[] => [
   {
     id: 'copy',
-    label: '复制',
+    label: '複製',
     shortcut: 'Ctrl + C',
     onClick: handlers.onCopy,
   },
   {
     id: 'paste',
-    label: '粘贴',
+    label: '貼上',
     shortcut: 'Ctrl + V',
     onClick: handlers.onPaste,
     divider: true,
   },
   {
     id: 'move-up',
-    label: '上移一层',
+    label: '上移一層',
     shortcut: 'Ctrl + ]',
     onClick: handlers.onMoveUp,
   },
   {
     id: 'move-down',
-    label: '下移一层',
+    label: '下移一層',
     shortcut: 'Ctrl + [',
     onClick: handlers.onMoveDown,
   },
   {
     id: 'move-to-top',
-    label: '移动至顶层',
+    label: '移動至頂層',
     shortcut: ']',
     onClick: handlers.onMoveToTop,
   },
   {
     id: 'move-to-bottom',
-    label: '移动至底层',
+    label: '移動至底層',
     shortcut: '[',
     onClick: handlers.onMoveToBottom,
     divider: true,
   },
   {
     id: 'send-to-chat',
-    label: '发送至对话',
+    label: '發送至對話',
     shortcut: 'Ctrl + Enter',
     onClick: handlers.onSendToChat,
   },
   {
     id: 'create-group',
-    label: '创建编组',
+    label: '建立群組',
     shortcut: 'Ctrl + G',
     onClick: handlers.onCreateGroup,
     divider: true,
   },
   {
     id: 'toggle-visibility',
-    label: '显示/隐藏',
+    label: handlers.isVisible === false ? '顯示' : '隱藏',
     shortcut: 'Shift + Ctrl + H',
     onClick: handlers.onToggleVisibility,
   },
   {
     id: 'toggle-lock',
-    label: '锁定/解锁',
+    label: handlers.isLocked ? '解鎖' : '鎖定',
     shortcut: 'Shift + Ctrl + L',
     onClick: handlers.onToggleLock,
   },
   {
     id: 'export',
-    label: '导出',
+    label: '匯出',
     submenu: [
       {
         id: 'export-png',
@@ -264,7 +250,7 @@ export const getImageContextMenuItems = (handlers: {
   },
   {
     id: 'delete',
-    label: '删除',
+    label: '刪除',
     onClick: handlers.onDelete,
     divider: true,
   },

@@ -4,5 +4,6 @@ export { TextLayerComponent } from './TextLayerComponent';
 export { MaskLayerComponent } from './MaskLayerComponent';
 export { DrawingLayerComponent } from './DrawingLayerComponent';
 export { PenLayerComponent } from './PenLayerComponent';
+export { VideoLayerComponent } from './VideoLayerComponent';
 export { ImageGeneratorBlock } from './ImageGeneratorBlock';
 export { VideoGeneratorBlock } from './VideoGeneratorBlock';

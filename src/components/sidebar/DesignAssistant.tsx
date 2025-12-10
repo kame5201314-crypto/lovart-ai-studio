@@ -10,7 +10,7 @@ import {
   AlertCircle,
   X,
 } from 'lucide-react';
-import { aiDesignChat, generateImage, type AIDesignChatMessage } from '../../services/aiService';
+import { generateImage } from '../../services/aiService';
 import type { AIModel } from '../../types';
 
 interface Message {
@@ -37,7 +37,6 @@ interface DesignAssistantProps {
 export const DesignAssistant: React.FC<DesignAssistantProps> = ({
   onImageGenerated,
   onAddToCanvas,
-  currentImage,
   selectedModel = 'gemini-flash',
 }) => {
   const [messages, setMessages] = useState<Message[]>([
@@ -147,37 +146,42 @@ export const DesignAssistant: React.FC<DesignAssistantProps> = ({
           onImageGenerated(images[0]);
         }
       } else {
-        // 使用對話式 AI
-        const chatMessages: AIDesignChatMessage[] = messages
-          .filter((m) => m.role !== 'system')
-          .map((m) => ({
-            role: m.role as 'user' | 'assistant',
-            content: m.content,
-            images: m.images,
-          }));
-
-        chatMessages.push({
-          role: 'user',
-          content: input,
-          images: uploadedImages.length > 0 ? uploadedImages : undefined,
-        });
-
-        const response = await aiDesignChat({
-          messages: chatMessages,
-          currentImage,
-        });
-
+        // AI 對話功能開發中，使用圖片生成代替
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: response.message,
-          images: response.images,
+          content: 'AI 對話功能開發中，正在嘗試為您生成圖片...',
           timestamp: new Date(),
         };
         setMessages((prev) => [...prev, assistantMessage]);
 
-        if (response.images?.[0] && onImageGenerated) {
-          onImageGenerated(response.images[0]);
+        // 嘗試生成圖片
+        try {
+          const images = await generateImage({
+            prompt: input,
+            model: selectedModel,
+            width: 1024,
+            height: 1024,
+          });
+          if (images[0] && onImageGenerated) {
+            onImageGenerated(images[0]);
+            const imageMessage: Message = {
+              id: (Date.now() + 2).toString(),
+              role: 'assistant',
+              content: '圖片已生成！',
+              images,
+              timestamp: new Date(),
+            };
+            setMessages((prev) => [...prev, imageMessage]);
+          }
+        } catch {
+          const errorMsg: Message = {
+            id: (Date.now() + 2).toString(),
+            role: 'assistant',
+            content: 'AI 對話功能開發中，請使用圖片生成相關指令',
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, errorMsg]);
         }
       }
 

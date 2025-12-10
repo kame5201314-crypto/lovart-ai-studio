@@ -9,8 +9,8 @@ import type {
   ShapeLayer,
   MarkerLayer,
   PenLayer,
+  VideoLayer,
   PenPath,
-  PenPoint,
   ShapeType,
   ToolType,
   AIModel,
@@ -57,6 +57,8 @@ interface CanvasStore {
   addPenLayer: () => string;
   addPathToPen: (layerId: string, path: PenPath) => void;
   updatePenPath: (layerId: string, pathIndex: number, path: PenPath) => void;
+  addVideoLayer: (src: string, thumbnail: string, duration: number, width?: number, height?: number) => string;
+  updateVideoState: (id: string, updates: Partial<Pick<VideoLayer, 'isPlaying' | 'currentTime' | 'volume' | 'muted' | 'loop' | 'playbackRate'>>) => void;
   setCanvasSize: (width: number, height: number) => void;
   setZoom: (zoom: number) => void;
   setPan: (x: number, y: number) => void;
@@ -80,6 +82,11 @@ interface CanvasStore {
   pasteLayer: () => void;
   deleteSelectedLayer: () => void;
   selectAllLayers: () => void;
+  // 圖層順序操作
+  moveLayerUp: (id: string) => void;
+  moveLayerDown: (id: string) => void;
+  moveLayerToTop: (id: string) => void;
+  moveLayerToBottom: (id: string) => void;
 }
 
 export const useCanvasStore = create<CanvasStore>((set, get) => ({
@@ -387,6 +394,43 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     }));
   },
 
+  addVideoLayer: (src, thumbnail, duration, width = 640, height = 360) => {
+    const x = 100;
+    const y = 100;
+
+    return get().addLayer({
+      type: 'video',
+      name: '影片',
+      visible: true,
+      locked: false,
+      opacity: 1,
+      x,
+      y,
+      width,
+      height,
+      rotation: 0,
+      src,
+      thumbnail,
+      duration,
+      currentTime: 0,
+      isPlaying: false,
+      volume: 1,
+      muted: false,
+      loop: false,
+      playbackRate: 1,
+    } as Omit<VideoLayer, 'id' | 'zIndex'>);
+  },
+
+  updateVideoState: (id, updates) => {
+    set((state) => ({
+      layers: state.layers.map((layer) =>
+        layer.id === id && layer.type === 'video'
+          ? { ...layer, ...updates }
+          : layer
+      ),
+    }));
+  },
+
   setCanvasSize: (width, height) => {
     set((state) => ({ canvasState: { ...state.canvasState, width, height } }));
     get().saveToHistory('調整畫布大小');
@@ -528,5 +572,73 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       set({ selectedLayerId: topLayer.id });
       console.log('已選擇圖層:', topLayer.name);
     }
+  },
+
+  // 上移一層
+  moveLayerUp: (id) => {
+    const { layers } = get();
+    const sortedLayers = [...layers].sort((a, b) => a.zIndex - b.zIndex);
+    const currentIndex = sortedLayers.findIndex(l => l.id === id);
+
+    if (currentIndex < sortedLayers.length - 1) {
+      // 與上一層交換 zIndex
+      const currentLayer = sortedLayers[currentIndex];
+      const upperLayer = sortedLayers[currentIndex + 1];
+
+      set({
+        layers: layers.map(l => {
+          if (l.id === currentLayer.id) return { ...l, zIndex: upperLayer.zIndex };
+          if (l.id === upperLayer.id) return { ...l, zIndex: currentLayer.zIndex };
+          return l;
+        }),
+      });
+    }
+  },
+
+  // 下移一層
+  moveLayerDown: (id) => {
+    const { layers } = get();
+    const sortedLayers = [...layers].sort((a, b) => a.zIndex - b.zIndex);
+    const currentIndex = sortedLayers.findIndex(l => l.id === id);
+
+    if (currentIndex > 0) {
+      // 與下一層交換 zIndex
+      const currentLayer = sortedLayers[currentIndex];
+      const lowerLayer = sortedLayers[currentIndex - 1];
+
+      set({
+        layers: layers.map(l => {
+          if (l.id === currentLayer.id) return { ...l, zIndex: lowerLayer.zIndex };
+          if (l.id === lowerLayer.id) return { ...l, zIndex: currentLayer.zIndex };
+          return l;
+        }),
+      });
+    }
+  },
+
+  // 移動至頂層
+  moveLayerToTop: (id) => {
+    const { layers } = get();
+    const maxZIndex = Math.max(...layers.map(l => l.zIndex));
+
+    set({
+      layers: layers.map(l => {
+        if (l.id === id) return { ...l, zIndex: maxZIndex + 1 };
+        return l;
+      }),
+    });
+  },
+
+  // 移動至底層
+  moveLayerToBottom: (id) => {
+    const { layers } = get();
+    const minZIndex = Math.min(...layers.map(l => l.zIndex));
+
+    set({
+      layers: layers.map(l => {
+        if (l.id === id) return { ...l, zIndex: minZIndex - 1 };
+        return l;
+      }),
+    });
   },
 }));

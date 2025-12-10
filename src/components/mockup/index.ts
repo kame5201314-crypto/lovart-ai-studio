@@ -1,0 +1,1 @@
+export { MockupVideoEditor } from './MockupVideoEditor';
