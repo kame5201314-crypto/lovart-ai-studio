@@ -741,8 +741,18 @@ export async function aiSuperResolution(request: AISuperResolutionRequest): Prom
   console.log('=== aiSuperResolution 開始 ===');
   const scale = request.scale || 2;
 
-  // 優先使用 Gemini 付費版進行超清
-  if (geminiClient) {
+  // 優先使用純前端 Canvas 方案進行圖片放大（最快、無需 API）
+  try {
+    console.log(`使用前端 Canvas 進行 ${scale}x 圖片放大...`);
+    const result = await upscaleWithCanvas(request.image, scale);
+    console.log('Canvas 圖片放大成功');
+    return result;
+  } catch (canvasError) {
+    console.error('Canvas 放大失敗:', canvasError);
+  }
+
+  // 備用：使用 Gemini 付費版進行超清（需要 API Key）
+  if (geminiClient && GEMINI_API_KEY) {
     try {
       console.log(`使用 Gemini 進行 ${scale}x 圖片放大...`);
       const results = await aiEditImage({
@@ -758,19 +768,10 @@ export async function aiSuperResolution(request: AISuperResolutionRequest): Prom
     }
   }
 
-  // 備用：使用純前端 Canvas 方案進行圖片放大
-  try {
-    console.log(`使用前端 Canvas 進行 ${scale}x 圖片放大...`);
-    const result = await upscaleWithCanvas(request.image, scale);
-    console.log('圖片放大成功');
-    return result;
-  } catch (canvasError) {
-    console.error('Canvas 放大失敗:', canvasError);
-  }
-
-  // 備用方案：使用 fal.ai
-  if (FAL_KEY) {
+  // 備用方案：使用 fal.ai（僅當 FAL_KEY 有效時）
+  if (FAL_KEY && FAL_KEY.length > 10) {
     try {
+      console.log('使用 fal.ai 進行超清...');
       const result = await fal.subscribe('fal-ai/clarity-upscaler', {
         input: {
           image_url: request.image,
@@ -788,12 +789,16 @@ export async function aiSuperResolution(request: AISuperResolutionRequest): Prom
     }
   }
 
-  // 最後備用：使用 Replicate
-  if (REPLICATE_API_TOKEN) {
-    return upscaleImage({ image: request.image, scale });
+  // 最後備用：使用 Replicate（僅當 Token 有效時）
+  if (REPLICATE_API_TOKEN && REPLICATE_API_TOKEN.length > 10) {
+    try {
+      return await upscaleImage({ image: request.image, scale });
+    } catch (error) {
+      console.error('Replicate 超清失敗:', error);
+    }
   }
 
-  // 返回原圖
+  // 返回原圖（不拋出錯誤）
   console.warn('所有超清方案都失敗，返回原圖');
   return request.image;
 }
@@ -1036,8 +1041,8 @@ export interface AIRemoveBackgroundRequest {
 export async function aiRemoveBackground(request: AIRemoveBackgroundRequest): Promise<string> {
   console.log('=== aiRemoveBackground 開始 ===');
 
-  // 優先使用 Gemini 付費版進行去背
-  if (geminiClient) {
+  // 優先使用 Gemini 付費版進行去背（效果最好）
+  if (geminiClient && GEMINI_API_KEY) {
     try {
       console.log('使用 Gemini 進行去背...');
       const results = await aiEditImage({
@@ -1057,15 +1062,16 @@ export async function aiRemoveBackground(request: AIRemoveBackgroundRequest): Pr
   try {
     console.log('使用前端去背方案...');
     const result = await removeBackgroundWithCanvas(request.image);
-    console.log('去背成功');
+    console.log('Canvas 去背成功');
     return result;
   } catch (canvasError) {
     console.error('Canvas 去背失敗:', canvasError);
   }
 
-  // 備用方案 1：使用 fal.ai
-  if (FAL_KEY) {
+  // 備用方案 1：使用 fal.ai（僅當 FAL_KEY 有效時）
+  if (FAL_KEY && FAL_KEY.length > 10) {
     try {
+      console.log('使用 fal.ai 進行去背...');
       const result = await fal.subscribe('fal-ai/birefnet', {
         input: {
           image_url: request.image,
@@ -1082,12 +1088,16 @@ export async function aiRemoveBackground(request: AIRemoveBackgroundRequest): Pr
     }
   }
 
-  // 備用方案 2：使用 Replicate
-  if (REPLICATE_API_TOKEN) {
-    return removeBackground({ image: request.image });
+  // 備用方案 2：使用 Replicate（僅當 Token 有效時）
+  if (REPLICATE_API_TOKEN && REPLICATE_API_TOKEN.length > 10) {
+    try {
+      return await removeBackground({ image: request.image });
+    } catch (error) {
+      console.error('Replicate 去背失敗:', error);
+    }
   }
 
-  // 返回原圖
+  // 返回原圖（不拋出錯誤）
   console.warn('所有去背方案都失敗，返回原圖');
   return request.image;
 }
