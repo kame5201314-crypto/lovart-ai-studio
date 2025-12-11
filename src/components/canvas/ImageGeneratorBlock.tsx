@@ -7,6 +7,13 @@ const models = [
   { id: 'nano-banana-pro', name: 'Nano Banana Pro', icon: '🍌' },
 ];
 
+// 解析度列表
+const resolutions = [
+  { id: '1K', label: '1K', multiplier: 1 },
+  { id: '2K', label: '2K', multiplier: 2 },
+  { id: '4K', label: '4K', multiplier: 4 },
+];
+
 // 比例列表
 const aspectRatios = [
   { id: '21:9', label: '21:9', size: '1568×672', width: 1568, height: 672 },
@@ -29,15 +36,18 @@ interface ImageGeneratorBlockProps {
 
 export function ImageGeneratorBlock({ onGenerate, isGenerating = false }: ImageGeneratorBlockProps) {
   const [prompt, setPrompt] = useState('');
-  const [selectedModel, setSelectedModel] = useState(models[0]);
+  const [selectedModel, setSelectedModel] = useState(models[1]); // 預設 Nano Banana Pro
   const [selectedRatio, setSelectedRatio] = useState(aspectRatios[4]); // 預設 1:1
+  const [selectedResolution, setSelectedResolution] = useState(resolutions[0]); // 預設 1K
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [showRatioDropdown, setShowRatioDropdown] = useState(false);
+  const [showResolutionDropdown, setShowResolutionDropdown] = useState(false);
   const [showUploadDropdown, setShowUploadDropdown] = useState(false);
   const [referenceImage, setReferenceImage] = useState<string | null>(null);
 
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const ratioDropdownRef = useRef<HTMLDivElement>(null);
+  const resolutionDropdownRef = useRef<HTMLDivElement>(null);
   const uploadDropdownRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -49,6 +59,9 @@ export function ImageGeneratorBlock({ onGenerate, isGenerating = false }: ImageG
       }
       if (ratioDropdownRef.current && !ratioDropdownRef.current.contains(e.target as Node)) {
         setShowRatioDropdown(false);
+      }
+      if (resolutionDropdownRef.current && !resolutionDropdownRef.current.contains(e.target as Node)) {
+        setShowResolutionDropdown(false);
       }
       if (uploadDropdownRef.current && !uploadDropdownRef.current.contains(e.target as Node)) {
         setShowUploadDropdown(false);
@@ -206,9 +219,36 @@ export function ImageGeneratorBlock({ onGenerate, isGenerating = false }: ImageG
 
           <div className="flex items-center gap-2">
             {/* 解析度選擇 */}
-            <button className="px-2 py-1 text-sm text-gray-500 hover:bg-gray-100 rounded-lg">
-              1K
-            </button>
+            <div className="relative" ref={resolutionDropdownRef}>
+              <button
+                onClick={() => setShowResolutionDropdown(!showResolutionDropdown)}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors text-sm text-gray-500"
+              >
+                <span>{selectedResolution.label}</span>
+                <ChevronDown size={14} />
+              </button>
+
+              {showResolutionDropdown && (
+                <div className="absolute bottom-full right-0 mb-2 bg-white rounded-xl shadow-xl border border-gray-100 py-2 min-w-[100px] z-50">
+                  <div className="px-3 py-1.5 text-xs text-gray-500 font-medium">分辨率</div>
+                  {resolutions.map((res) => (
+                    <button
+                      key={res.id}
+                      onClick={() => {
+                        setSelectedResolution(res);
+                        setShowResolutionDropdown(false);
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-50 transition-colors"
+                    >
+                      <span className="text-sm text-gray-900">{res.label}</span>
+                      {selectedResolution.id === res.id && (
+                        <Check size={14} className="text-gray-600" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* 比例選擇 */}
             <div className="relative" ref={ratioDropdownRef}>

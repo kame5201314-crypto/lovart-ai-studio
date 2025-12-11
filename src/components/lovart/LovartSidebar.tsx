@@ -134,6 +134,13 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
   // 獲取所有標記圖層
   const markerLayers = layers.filter(l => l.type === 'marker') as MarkerLayer[];
 
+  // 處理新建對話
+  const handleNewChat = () => {
+    setMessages([]); // 清空訊息
+    setMessage(''); // 清空輸入框
+    onNewChat?.(); // 調用外部回調
+  };
+
   const handleSend = () => {
     if (message.trim()) {
       // 添加用戶訊息到對話記錄
@@ -226,7 +233,7 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
       {/* 頂部工具列 */}
       <div className="flex items-center justify-end gap-1 p-3 border-b border-gray-100 relative">
         <ChatToolbar
-          onNewChat={onNewChat}
+          onNewChat={handleNewChat}
           onSelectHistory={onSelectHistory}
           onDeleteHistory={onDeleteHistory}
           onShare={onShare}
@@ -512,33 +519,32 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
             <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-500" title="@引用">
               <AtSign size={18} />
             </button>
-
-            {/* 思考模式切換器 */}
-            <div className="relative">
-              <button
-                onClick={() => setThinkingMode(thinkingMode === 'thinking' ? 'fast' : 'thinking')}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
-                  thinkingMode === 'thinking'
-                    ? 'bg-gray-900 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                <Lightbulb size={14} />
-                <span className="hidden sm:inline">思考模式</span>
-              </button>
-
-              {/* 思考模式提示 */}
-              {thinkingMode === 'thinking' && (
-                <div className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap z-50 shadow-lg">
-                  <div className="font-medium">思考模式</div>
-                  <div className="text-gray-300">制定複雜任務並自主執行</div>
-                  <div className="absolute top-full left-4 border-4 border-transparent border-t-gray-900"></div>
-                </div>
-              )}
-            </div>
           </div>
 
           <div className="flex items-center gap-1">
+            {/* 思考/快速模式切換器 */}
+            <div className="relative group">
+              <button
+                onClick={() => setThinkingMode(thinkingMode === 'thinking' ? 'fast' : 'thinking')}
+                className="flex items-center gap-1.5 px-2 py-1 text-gray-500 hover:text-gray-700 text-sm transition-colors"
+              >
+                {thinkingMode === 'thinking' ? (
+                  <Lightbulb size={16} />
+                ) : (
+                  <Zap size={16} />
+                )}
+              </button>
+
+              {/* 模式提示 - hover 時顯示 */}
+              <div className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap z-50 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                <div className="font-medium">{thinkingMode === 'thinking' ? '思考模式' : '快速模式'}</div>
+                <div className="text-gray-300">
+                  {thinkingMode === 'thinking' ? '制定複雜任務並自主執行' : '快速制定和執行任務'}
+                </div>
+                <div className="absolute top-full right-4 border-4 border-transparent border-t-gray-900"></div>
+              </div>
+            </div>
+
             <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-500" title="網頁搜尋">
               <Globe size={18} />
             </button>
@@ -548,7 +554,7 @@ export const LovartSidebar: React.FC<LovartSidebarProps> = ({
             <button
               onClick={handleSend}
               disabled={!message.trim()}
-              className="p-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 rounded-lg text-white ml-1"
+              className="p-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 rounded-full text-white ml-1"
             >
               <Send size={18} />
             </button>
