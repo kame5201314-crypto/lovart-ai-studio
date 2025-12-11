@@ -140,8 +140,8 @@ export interface VideoLayer extends BaseLayer {
   playbackRate: number;
 }
 
-// AI 模型定義（僅 Gemini API）
-export type AIModel = 'gemini-flash';
+// AI 模型定義（使用 Gemini API）
+export type AIModel = 'gemini-flash' | 'nano-banana-pro';
 
 export interface AIModelConfig {
   id: AIModel;
