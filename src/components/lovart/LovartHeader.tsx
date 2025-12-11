@@ -92,8 +92,8 @@ export const LovartHeader: React.FC<LovartHeaderProps> = ({
   ];
 
   return (
-    <div className="h-12 bg-white border-b border-gray-200 flex items-center px-4 relative z-50">
-      <div className="flex items-center gap-3" ref={menuRef}>
+    <div className="h-12 bg-white border-b border-gray-200 flex items-center pl-0 pr-4 relative z-50">
+      <div className="flex items-center gap-2" ref={menuRef}>
         <button
           onClick={() => setShowLogoMenu(!showLogoMenu)}
           className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center hover:bg-gray-800 transition-colors"
@@ -102,7 +102,7 @@ export const LovartHeader: React.FC<LovartHeaderProps> = ({
         </button>
 
         {showLogoMenu && (
-          <div className="absolute top-full left-4 mt-1 bg-white rounded-xl shadow-xl border border-gray-200 py-2 min-w-[220px] z-50">
+          <div className="absolute top-full left-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-200 py-2 min-w-[220px] z-50">
             {menuItems.map((item, index) => (
               item.type === 'divider' ? (
                 <div key={index} className="h-px bg-gray-100 my-1" />
@@ -151,9 +151,6 @@ export const LovartHeader: React.FC<LovartHeaderProps> = ({
               onClick={() => setIsEditing(true)}
               className="flex items-center gap-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 px-2 py-1 rounded"
             >
-              <span className="w-5 h-5 bg-gray-800 rounded flex items-center justify-center flex-shrink-0">
-                <span className="text-white text-xs font-bold">M</span>
-              </span>
               <span>{name || '未命名專案'}</span>
               <ChevronDown size={14} className="text-gray-400" />
             </button>
