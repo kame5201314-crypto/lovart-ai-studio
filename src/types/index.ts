@@ -1,5 +1,5 @@
 // 圖層類型定義
-export type LayerType = 'image' | 'text' | 'mask' | 'drawing' | 'shape' | 'marker' | 'pen';
+export type LayerType = 'image' | 'text' | 'mask' | 'drawing' | 'shape' | 'marker' | 'pen' | 'video';
 
 // 形狀類型
 export type ShapeType = 'rectangle' | 'circle' | 'triangle' | 'star' | 'arrow' | 'hexagon';
@@ -81,7 +81,7 @@ export interface ImageFilters {
   blur: number;
 }
 
-export type Layer = ImageLayer | TextLayer | MaskLayer | DrawingLayer | ShapeLayer | MarkerLayer | PenLayer;
+export type Layer = ImageLayer | TextLayer | MaskLayer | DrawingLayer | ShapeLayer | MarkerLayer | PenLayer | VideoLayer;
 
 // 工具類型
 export type ToolType =
@@ -126,10 +126,22 @@ export interface PenLayer extends BaseLayer {
   paths: PenPath[];
 }
 
-// AI 模型定義
-export type AIModel =
-  | 'gemini-flash'
-  | 'nano-banana-pro';
+// 影片圖層
+export interface VideoLayer extends BaseLayer {
+  type: 'video';
+  src: string;
+  thumbnail?: string;
+  duration: number;
+  currentTime: number;
+  isPlaying: boolean;
+  muted: boolean;
+  volume: number;
+  loop: boolean;
+  playbackRate: number;
+}
+
+// AI 模型定義（僅 Gemini API）
+export type AIModel = 'gemini-flash';
 
 export interface AIModelConfig {
   id: AIModel;

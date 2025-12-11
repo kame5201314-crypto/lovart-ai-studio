@@ -55,10 +55,9 @@ const exampleCards = [
   },
 ];
 
-// AI 模型列表
+// AI 模型列表（僅 Gemini API）
 const aiModels: { id: AIModel; name: string; icon: string }[] = [
   { id: 'gemini-flash', name: 'Gemini 2.5 Flash', icon: '✨' },
-  { id: 'nano-banana-pro', name: 'Nano Banana Pro', icon: '◉' },
 ];
 
 // 對話歷史項目

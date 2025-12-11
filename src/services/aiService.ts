@@ -50,15 +50,6 @@ export const AI_MODELS: AIModelConfig[] = [
     maxResolution: 2048,
     available: true,
   },
-  {
-    id: 'nano-banana-pro',
-    name: 'Nano Banana Pro',
-    description: 'Google Gemini 進階圖片生成，支援更高解析度',
-    provider: 'Google',
-    capabilities: ['text-to-image', 'inpainting'],
-    maxResolution: 4096,
-    available: true,
-  },
 ];
 
 // 使用 Pollinations.ai 免費 AI 圖片生成
@@ -217,7 +208,6 @@ async function runReplicateModel(
 
 const MODEL_VERSIONS: Record<AIModel, string> = {
   'gemini-flash': 'gemini-2.0-flash-exp-image-generation',
-  'nano-banana-pro': 'gemini-2.0-flash-exp-image-generation',
 };
 
 // 使用 Google Gemini 官方 API 生成圖片
@@ -366,20 +356,8 @@ export async function generateImage(request: TextToImageRequest): Promise<string
     throw new Error(`模型 ${request.model} 尚未支援`);
   }
 
-  // 使用 Google Gemini 官方 API（推薦）
-  if (request.model === 'gemini-flash') {
-    console.log('使用 Gemini Flash 模型');
-    return generateWithGemini(request.prompt);
-  }
-
-  // 使用 Nano Banana Pro（基於 Gemini API）
-  if (request.model === 'nano-banana-pro') {
-    console.log('使用 Nano Banana Pro 模型');
-    return generateWithNanoBanana(request.prompt, request.width, request.height, true);
-  }
-
-  // 預設使用 Gemini
-  console.log('使用預設 Gemini 模型');
+  // 使用 Google Gemini 官方 API
+  console.log('使用 Gemini Flash 模型');
   return generateWithGemini(request.prompt);
 }
 
