@@ -114,7 +114,7 @@ export const VideoLayerComponent: React.FC<VideoLayerComponentProps> = ({
     }
   }, [layer.currentTime, videoReady]);
 
-  if (!videoReady) {
+  if (!videoReady || !videoRef.current) {
     // 顯示縮圖作為佔位符
     return null;
   }
@@ -122,6 +122,7 @@ export const VideoLayerComponent: React.FC<VideoLayerComponentProps> = ({
   return (
     <Image
       ref={imageRef}
+      image={videoRef.current}
       id={layer.id}
       name="video-layer"
       x={layer.x}
@@ -132,7 +133,7 @@ export const VideoLayerComponent: React.FC<VideoLayerComponentProps> = ({
       opacity={layer.opacity}
       draggable={isDraggable}
       onClick={onClick}
-      onTap={onClick as any}
+      onTap={onClick as unknown as (e: Konva.KonvaEventObject<TouchEvent>) => void}
       onDragEnd={onDragEnd}
       onTransformEnd={onTransformEnd}
       onContextMenu={onContextMenu}
