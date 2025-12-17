@@ -7,3 +7,6 @@ export { PenLayerComponent } from './PenLayerComponent';
 export { VideoLayerComponent } from './VideoLayerComponent';
 export { ImageGeneratorBlock } from './ImageGeneratorBlock';
 export { VideoGeneratorBlock } from './VideoGeneratorBlock';
+export { AlignmentGuides, calculateSnap, SNAP_THRESHOLD } from './AlignmentGuides';
+export type { GuideLine } from './AlignmentGuides';
+export { ImageSelectorPanel, VariantPanel } from './ImageSelectorPanel';
