@@ -10,6 +10,7 @@ import type {
   MarkerLayer,
   PenLayer,
   VideoLayer,
+  GroupLayer,
   PenPath,
   ShapeType,
   ToolType,
@@ -87,6 +88,11 @@ interface CanvasStore {
   moveLayerDown: (id: string) => void;
   moveLayerToTop: (id: string) => void;
   moveLayerToBottom: (id: string) => void;
+  // 編組功能
+  createGroup: (layerIds: string[], name?: string) => string;
+  ungroupLayers: (groupId: string) => void;
+  addToGroup: (groupId: string, layerId: string) => void;
+  removeFromGroup: (groupId: string, layerId: string) => void;
 }
 
 export const useCanvasStore = create<CanvasStore>((set, get) => ({
@@ -640,5 +646,110 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         return l;
       }),
     });
+  },
+
+  // 創建編組
+  createGroup: (layerIds, name = '編組') => {
+    const { layers } = get();
+    const targetLayers = layers.filter(l => layerIds.includes(l.id));
+
+    if (targetLayers.length < 2) {
+      console.warn('至少需要2個圖層才能創建編組');
+      return '';
+    }
+
+    // 計算編組的邊界框
+    const minX = Math.min(...targetLayers.map(l => l.x));
+    const minY = Math.min(...targetLayers.map(l => l.y));
+    const maxX = Math.max(...targetLayers.map(l => l.x + l.width));
+    const maxY = Math.max(...targetLayers.map(l => l.y + l.height));
+    const maxZIndex = Math.max(...targetLayers.map(l => l.zIndex));
+
+    const groupId = uuidv4();
+    const groupLayer: GroupLayer = {
+      id: groupId,
+      type: 'group',
+      name,
+      visible: true,
+      locked: false,
+      opacity: 1,
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+      rotation: 0,
+      zIndex: maxZIndex + 1,
+      childLayerIds: layerIds,
+      collapsed: false,
+    };
+
+    set({
+      layers: [...layers, groupLayer],
+      selectedLayerId: groupId,
+    });
+
+    get().saveToHistory(`創建編組: ${name}`);
+    return groupId;
+  },
+
+  // 解散編組
+  ungroupLayers: (groupId) => {
+    const { layers } = get();
+    const groupLayer = layers.find(l => l.id === groupId && l.type === 'group') as GroupLayer | undefined;
+
+    if (!groupLayer) {
+      console.warn('找不到編組');
+      return;
+    }
+
+    // 移除編組圖層，保留子圖層
+    set({
+      layers: layers.filter(l => l.id !== groupId),
+      selectedLayerId: groupLayer.childLayerIds[0] || null,
+    });
+
+    get().saveToHistory('解散編組');
+  },
+
+  // 添加圖層到編組
+  addToGroup: (groupId, layerId) => {
+    const { layers } = get();
+
+    set({
+      layers: layers.map(l => {
+        if (l.id === groupId && l.type === 'group') {
+          const groupLayer = l as GroupLayer;
+          if (!groupLayer.childLayerIds.includes(layerId)) {
+            return {
+              ...groupLayer,
+              childLayerIds: [...groupLayer.childLayerIds, layerId],
+            };
+          }
+        }
+        return l;
+      }),
+    });
+
+    get().saveToHistory('添加到編組');
+  },
+
+  // 從編組移除圖層
+  removeFromGroup: (groupId, layerId) => {
+    const { layers } = get();
+
+    set({
+      layers: layers.map(l => {
+        if (l.id === groupId && l.type === 'group') {
+          const groupLayer = l as GroupLayer;
+          return {
+            ...groupLayer,
+            childLayerIds: groupLayer.childLayerIds.filter(id => id !== layerId),
+          };
+        }
+        return l;
+      }),
+    });
+
+    get().saveToHistory('從編組移除');
   },
 }));

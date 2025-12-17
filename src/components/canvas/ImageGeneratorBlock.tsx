@@ -28,15 +28,25 @@ const aspectRatios = [
   { id: '4:5', label: '4:5', size: '1024×1280', width: 1024, height: 1280 },
 ];
 
+interface CanvasLayer {
+  id: string;
+  type: string;
+  name: string;
+  src?: string;
+}
+
 interface ImageGeneratorBlockProps {
   onGenerate?: (prompt: string, model: string, width: number, height: number, referenceImage?: string) => void;
   onClose?: () => void;
   isGenerating?: boolean;
+  canvasLayers?: CanvasLayer[];
+  onSelectFromCanvas?: (layerId: string) => string | null;
 }
 
-export function ImageGeneratorBlock({ onGenerate, isGenerating = false }: ImageGeneratorBlockProps) {
+export function ImageGeneratorBlock({ onGenerate, isGenerating = false, canvasLayers = [], onSelectFromCanvas }: ImageGeneratorBlockProps) {
   const [prompt, setPrompt] = useState('');
   const [selectedModel, setSelectedModel] = useState(models[1]); // 預設 Nano Banana Pro
+  const [showCanvasSelector, setShowCanvasSelector] = useState(false);
   const [selectedRatio, setSelectedRatio] = useState(aspectRatios[4]); // 預設 1:1
   const [selectedResolution, setSelectedResolution] = useState(resolutions[0]); // 預設 1K
   const [showModelDropdown, setShowModelDropdown] = useState(false);

@@ -1,5 +1,5 @@
 // 圖層類型定義
-export type LayerType = 'image' | 'text' | 'mask' | 'drawing' | 'shape' | 'marker' | 'pen' | 'video';
+export type LayerType = 'image' | 'text' | 'mask' | 'drawing' | 'shape' | 'marker' | 'pen' | 'video' | 'group';
 
 // 形狀類型
 export type ShapeType = 'rectangle' | 'circle' | 'triangle' | 'star' | 'arrow' | 'hexagon';
@@ -81,7 +81,7 @@ export interface ImageFilters {
   blur: number;
 }
 
-export type Layer = ImageLayer | TextLayer | MaskLayer | DrawingLayer | ShapeLayer | MarkerLayer | PenLayer | VideoLayer;
+export type Layer = ImageLayer | TextLayer | MaskLayer | DrawingLayer | ShapeLayer | MarkerLayer | PenLayer | VideoLayer | GroupLayer;
 
 // 工具類型
 export type ToolType =
@@ -138,6 +138,13 @@ export interface VideoLayer extends BaseLayer {
   volume: number;
   loop: boolean;
   playbackRate: number;
+}
+
+// 編組圖層
+export interface GroupLayer extends BaseLayer {
+  type: 'group';
+  childLayerIds: string[]; // 子圖層 ID 列表
+  collapsed: boolean; // 是否折疊顯示
 }
 
 // AI 模型定義（使用 Gemini API）

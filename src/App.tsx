@@ -34,6 +34,20 @@ function App() {
     setLoading,
     selectedModel,
     currentTool,
+    // 剪貼簿操作
+    copyLayer,
+    cutLayer,
+    pasteLayer,
+    deleteSelectedLayer,
+    // 圖層順序操作
+    moveLayerUp,
+    moveLayerDown,
+    moveLayerToTop,
+    moveLayerToBottom,
+    // 圖層可見性與鎖定
+    toggleLayerVisibility,
+    toggleLayerLock,
+    duplicateLayer,
   } = useCanvasStore();
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({
@@ -68,15 +82,34 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // 對話歷史
-  const [chatHistory, setChatHistory] = useState([
+  // 對話歷史（包含訊息和生成的圖片）
+  interface ChatMessage {
+    role: 'user' | 'assistant';
+    content: string;
+    imageUrl?: string;
+    timestamp: Date;
+  }
+
+  interface ChatHistoryItem {
+    id: string;
+    title: string;
+    preview: string;
+    timestamp: Date;
+    messages: ChatMessage[];
+  }
+
+  const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([
     {
       id: '1',
       title: 'I NEED A STORY BOARD F...',
       preview: 'C',
       timestamp: new Date(),
+      messages: [],
     },
   ]);
+
+  // 當前對話的訊息列表
+  const [currentMessages, setCurrentMessages] = useState<ChatMessage[]>([]);
 
   // 生成的文件列表
   const [generatedFiles, setGeneratedFiles] = useState([
@@ -238,43 +271,66 @@ function App() {
 
   const contextMenuItems = getImageContextMenuItems({
     onCopy: () => {
-      // TODO: 實現複製功能
+      copyLayer();
       closeContextMenu();
     },
     onPaste: () => {
-      // TODO: 實現粘貼功能
+      pasteLayer();
       closeContextMenu();
     },
     onMoveUp: () => {
-      // TODO: 實現上移一層
+      if (selectedLayerId) {
+        moveLayerUp(selectedLayerId);
+        saveToHistory('上移一層');
+      }
       closeContextMenu();
     },
     onMoveDown: () => {
-      // TODO: 實現下移一層
+      if (selectedLayerId) {
+        moveLayerDown(selectedLayerId);
+        saveToHistory('下移一層');
+      }
       closeContextMenu();
     },
     onMoveToTop: () => {
-      // TODO: 實現移動至頂層
+      if (selectedLayerId) {
+        moveLayerToTop(selectedLayerId);
+        saveToHistory('移動至頂層');
+      }
       closeContextMenu();
     },
     onMoveToBottom: () => {
-      // TODO: 實現移動至底層
+      if (selectedLayerId) {
+        moveLayerToBottom(selectedLayerId);
+        saveToHistory('移動至底層');
+      }
       closeContextMenu();
     },
     onSendToChat: () => {
-      // TODO: 實現發送至對話
+      // 發送當前選中圖層的圖片到對話
+      if (selectedImage) {
+        handleSendMessage(`請分析這張圖片`);
+      }
       closeContextMenu();
     },
     onCreateGroup: () => {
-      // TODO: 實現創建編組
+      // 創建編組 - 複製當前圖層作為群組的開始
+      if (selectedLayerId) {
+        duplicateLayer(selectedLayerId);
+        saveToHistory('創建編組');
+      }
       closeContextMenu();
     },
     onToggleVisibility: () => {
-      // TODO: 實現顯示/隱藏
+      if (selectedLayerId) {
+        toggleLayerVisibility(selectedLayerId);
+      }
       closeContextMenu();
     },
     onToggleLock: () => {
-      // TODO: 實現鎖定/解鎖
+      if (selectedLayerId) {
+        toggleLayerLock(selectedLayerId);
+      }
       closeContextMenu();
     },
     onExportPNG: () => {
@@ -286,7 +342,7 @@ function App() {
       closeContextMenu();
     },
     onDelete: () => {
-      // TODO: 實現刪除
+      deleteSelectedLayer();
       closeContextMenu();
     },
     isLocked: selectedLayer?.locked,
@@ -428,17 +484,34 @@ function App() {
     console.log('訊息:', message);
     console.log('選擇的模型:', selectedModel);
 
+    // 添加用戶訊息到當前對話
+    const userMessage: ChatMessage = {
+      role: 'user',
+      content: message,
+      timestamp: new Date(),
+    };
+    setCurrentMessages(prev => [...prev, userMessage]);
+
     // 如果是新對話，創建一個新的歷史記錄
-    if (!currentChatId) {
-      const newChatId = Date.now().toString();
-      const newChat = {
-        id: newChatId,
+    let chatId = currentChatId;
+    if (!chatId) {
+      chatId = Date.now().toString();
+      const newChat: ChatHistoryItem = {
+        id: chatId,
         title: message.substring(0, 30) + (message.length > 30 ? '...' : ''),
         preview: message.substring(0, 50),
         timestamp: new Date(),
+        messages: [userMessage],
       };
       setChatHistory(prev => [newChat, ...prev]);
-      setCurrentChatId(newChatId);
+      setCurrentChatId(chatId);
+    } else {
+      // 更新現有對話的訊息
+      setChatHistory(prev => prev.map(chat =>
+        chat.id === chatId
+          ? { ...chat, messages: [...chat.messages, userMessage] }
+          : chat
+      ));
     }
 
     setLoading(true, '正在生成圖片...');
@@ -457,6 +530,31 @@ function App() {
       if (results[0]) {
         console.log('添加圖片到畫布, URL長度:', results[0].length);
         handleImageGenerated(results[0]);
+
+        // 添加助手回覆訊息（包含生成的圖片）
+        const assistantMessage: ChatMessage = {
+          role: 'assistant',
+          content: '已生成圖片',
+          imageUrl: results[0],
+          timestamp: new Date(),
+        };
+        setCurrentMessages(prev => [...prev, assistantMessage]);
+
+        // 更新對話歷史
+        setChatHistory(prev => prev.map(chat =>
+          chat.id === chatId
+            ? { ...chat, messages: [...chat.messages, assistantMessage] }
+            : chat
+        ));
+
+        // 添加到生成的文件列表
+        const newFile = {
+          id: Date.now().toString(),
+          name: message.substring(0, 20) + '...',
+          thumbnail: results[0],
+          type: 'image' as const,
+        };
+        setGeneratedFiles(prev => [newFile, ...prev]);
       } else {
         console.warn('沒有收到圖片結果');
         alert('生成完成但沒有收到圖片');
@@ -481,7 +579,30 @@ function App() {
   // 新建對話
   const handleNewChat = () => {
     setCurrentChatId(null);
+    setCurrentMessages([]);
     console.log('新建對話');
+  };
+
+  // 載入歷史對話
+  const handleSelectHistory = (chatId: string) => {
+    console.log('選擇歷史對話:', chatId);
+    setCurrentChatId(chatId);
+
+    // 找到對應的對話歷史
+    const chat = chatHistory.find(c => c.id === chatId);
+    if (chat && chat.messages) {
+      // 載入對話訊息
+      setCurrentMessages(chat.messages);
+
+      // 如果有圖片，將最後一張圖片添加到畫布
+      const lastImageMessage = [...chat.messages].reverse().find(m => m.imageUrl);
+      if (lastImageMessage?.imageUrl) {
+        addImageLayer(lastImageMessage.imageUrl, `歷史圖片: ${chat.title}`);
+        saveToHistory('載入歷史對話圖片');
+      }
+    } else {
+      setCurrentMessages([]);
+    }
   };
 
   // 鍵盤快捷鍵
@@ -628,7 +749,7 @@ function App() {
                 isGenerating={isLoading}
                 lastGeneratedImage={layers.length > 0 ? (layers[layers.length - 1] as ImageLayer)?.src : undefined}
                 onNewChat={handleNewChat}
-                onSelectHistory={(chatId) => { setCurrentChatId(chatId); }}
+                onSelectHistory={handleSelectHistory}
                 onDeleteHistory={handleDeleteHistory}
                 onShare={() => { navigator.clipboard.writeText(window.location.href); alert('分享連結已複製到剪貼板！'); }}
                 onSelectFile={(fileId) => {
@@ -819,11 +940,7 @@ function App() {
           isGenerating={isLoading}
           lastGeneratedImage={layers.length > 0 ? (layers[layers.length - 1] as ImageLayer)?.src : undefined}
           onNewChat={handleNewChat}
-          onSelectHistory={(chatId) => {
-            console.log('選擇歷史對話:', chatId);
-            setCurrentChatId(chatId);
-            // TODO: 載入歷史對話的訊息
-          }}
+          onSelectHistory={handleSelectHistory}
           onDeleteHistory={handleDeleteHistory}
           onShare={() => {
             console.log('分享對話');
