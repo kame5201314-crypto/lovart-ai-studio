@@ -13,6 +13,7 @@ import {
   aiRemoveBackground,
   aiTextReplace,
   generateImage,
+  generateVideo,
 } from './services/aiService';
 import type {
   AIModel, ImageLayer } from './types';
@@ -112,24 +113,24 @@ function App() {
   const [currentMessages, setCurrentMessages] = useState<ChatMessage[]>([]);
 
   // 生成的文件列表
-  const [generatedFiles, setGeneratedFiles] = useState([
+  const [generatedFiles, setGeneratedFiles] = useState<Array<{ id: string; name: string; thumbnail: string; type: 'image' | 'video' }>>([
     {
       id: '1',
       name: 'Storyboard_Frame_5_Hostel',
       thumbnail: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=100&h=100&fit=crop',
-      type: 'image' as const,
+      type: 'image',
     },
     {
       id: '2',
       name: 'Storyboard_Frame_3_Walking',
       thumbnail: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=100&h=100&fit=crop',
-      type: 'image' as const,
+      type: 'image',
     },
     {
       id: '3',
       name: 'Storyboard_Frame_2_Boombox',
       thumbnail: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=100&h=100&fit=crop',
-      type: 'image' as const,
+      type: 'image',
     },
   ]);
 
@@ -896,8 +897,49 @@ function App() {
                   onGenerate={async (prompt, model, ratio, duration, startFrame, endFrame) => {
                     setLoading(true, '正在生成影片...');
                     try {
-                      // TODO: 實現影片生成 API
-                      alert('影片生成功能開發中...');
+                      const result = await generateVideo({
+                        prompt,
+                        model,
+                        aspectRatio: ratio as '16:9' | '9:16' | '1:1',
+                        duration: duration as 3 | 5 | 10,
+                        startFrame,
+                        endFrame,
+                      });
+
+                      if (result.status === 'completed' && result.videoUrl) {
+                        // 創建影片縮圖並添加到畫布
+                        const video = document.createElement('video');
+                        video.crossOrigin = 'anonymous';
+                        video.src = result.videoUrl;
+                        video.muted = true;
+
+                        video.onloadeddata = () => {
+                          const canvas = document.createElement('canvas');
+                          canvas.width = video.videoWidth || 640;
+                          canvas.height = video.videoHeight || 360;
+                          const ctx = canvas.getContext('2d');
+                          if (ctx) {
+                            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                            const thumbnail = canvas.toDataURL('image/jpeg', 0.8);
+                            addImageLayer(thumbnail, `影片: ${prompt.substring(0, 20)}...`, canvas.width / 2, canvas.height / 2);
+                            saveToHistory('AI 生成影片');
+                          }
+                        };
+
+                        // 添加到生成的文件列表
+                        const newFile = {
+                          id: Date.now().toString(),
+                          name: prompt.substring(0, 20) + '...',
+                          thumbnail: result.thumbnailUrl || result.videoUrl,
+                          type: 'video' as const,
+                        };
+                        setGeneratedFiles(prev => [newFile, ...prev]);
+
+                        setShowVideoGenerator(false);
+                        alert(`影片生成成功！\n影片網址: ${result.videoUrl}`);
+                      } else if (result.status === 'failed') {
+                        throw new Error(result.error || '影片生成失敗');
+                      }
                     } catch (error) {
                       console.error('生成失敗:', error);
                       alert('生成失敗：' + (error instanceof Error ? error.message : '未知錯誤'));

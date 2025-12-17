@@ -1311,6 +1311,192 @@ export async function aiIdentifyObject(request: AIIdentifyObjectRequest): Promis
   return '未知物件';
 }
 
+// ==================== 影片生成功能 ====================
+
+// 影片生成模型配置
+export const VIDEO_MODELS = [
+  { id: 'kling-2.1', name: 'Kling 2.1', provider: 'Kuaishou', description: '最新版本，高品質影片生成' },
+  { id: 'kling-2.0', name: 'Kling 2.0', provider: 'Kuaishou', description: '穩定版本，適合一般用途' },
+  { id: 'runway-gen3', name: 'Runway Gen-3', provider: 'Runway', description: '電影級品質，創意表現強' },
+  { id: 'pika-1.5', name: 'Pika 1.5', provider: 'Pika Labs', description: '動態效果好，適合短影片' },
+  { id: 'luma-dream', name: 'Luma Dream Machine', provider: 'Luma AI', description: '3D 效果優秀，場景生成強' },
+];
+
+export interface VideoGenerationRequest {
+  prompt: string;
+  model: string;
+  aspectRatio?: '16:9' | '9:16' | '1:1';
+  duration?: 3 | 5 | 10;
+  startFrame?: string; // 起始幀圖片 (base64 或 URL)
+  endFrame?: string; // 結束幀圖片 (base64 或 URL)
+}
+
+export interface VideoGenerationResult {
+  videoUrl: string;
+  thumbnailUrl?: string;
+  duration: number;
+  status: 'completed' | 'processing' | 'failed';
+  error?: string;
+}
+
+export async function generateVideo(request: VideoGenerationRequest): Promise<VideoGenerationResult> {
+  console.log('=== generateVideo 開始 ===');
+  console.log('請求參數:', JSON.stringify(request, null, 2));
+
+  // 優先使用 fal.ai 的 Kling 模型
+  if (FAL_KEY && FAL_KEY.length > 10) {
+    try {
+      console.log('使用 fal.ai 生成影片...');
+
+      // 根據模型選擇對應的 fal.ai 端點
+      let endpoint = 'fal-ai/kling-video/v2/master/text-to-video';
+      if (request.model === 'kling-2.0') {
+        endpoint = 'fal-ai/kling-video/v1.5/pro/text-to-video';
+      } else if (request.model === 'runway-gen3') {
+        endpoint = 'fal-ai/runway-gen3/turbo/image-to-video';
+      } else if (request.model === 'luma-dream') {
+        endpoint = 'fal-ai/luma-dream-machine';
+      }
+
+      const input: Record<string, unknown> = {
+        prompt: request.prompt,
+        aspect_ratio: request.aspectRatio || '16:9',
+        duration: `${request.duration || 5}`,
+      };
+
+      // 如果有起始幀，添加到輸入
+      if (request.startFrame) {
+        input.image_url = request.startFrame;
+      }
+
+      const result = await fal.subscribe(endpoint, {
+        input,
+        logs: true,
+        onQueueUpdate: (update) => {
+          console.log('影片生成進度:', update.status);
+        },
+      });
+
+      const output = result.data as { video?: { url: string }; request_id?: string };
+
+      if (output.video?.url) {
+        console.log('fal.ai 影片生成成功:', output.video.url);
+        return {
+          videoUrl: output.video.url,
+          duration: request.duration || 5,
+          status: 'completed',
+        };
+      }
+    } catch (error) {
+      console.error('fal.ai 影片生成失敗:', error);
+    }
+  }
+
+  // 備用：使用 Replicate 的影片模型
+  if (REPLICATE_API_TOKEN && REPLICATE_API_TOKEN.length > 10) {
+    try {
+      console.log('使用 Replicate 生成影片...');
+
+      // 使用 Stable Video Diffusion
+      const modelVersion = 'stability-ai/stable-video-diffusion:3f0457e4619daac51203dedb472816fd4af51f3149fa7a9e0b5ffcf1b8172438';
+
+      // 如果沒有起始幀，先生成一張圖片作為起始幀
+      let startImage = request.startFrame;
+      if (!startImage) {
+        console.log('生成起始幀圖片...');
+        const imageResults = await generateImage({
+          prompt: request.prompt,
+          model: 'gemini-flash',
+          width: 1024,
+          height: 576,
+          numOutputs: 1,
+        });
+        if (imageResults[0]) {
+          startImage = imageResults[0];
+        }
+      }
+
+      if (startImage) {
+        const results = await runReplicateModel(modelVersion, {
+          input_image: startImage,
+          motion_bucket_id: 127,
+          fps: 6,
+          cond_aug: 0.02,
+        });
+
+        if (results[0]) {
+          console.log('Replicate 影片生成成功');
+          return {
+            videoUrl: results[0],
+            duration: request.duration || 5,
+            status: 'completed',
+          };
+        }
+      }
+    } catch (error) {
+      console.error('Replicate 影片生成失敗:', error);
+    }
+  }
+
+  // 如果所有方法都失敗，返回錯誤
+  console.error('所有影片生成方案都失敗');
+  return {
+    videoUrl: '',
+    duration: 0,
+    status: 'failed',
+    error: '影片生成失敗。請確認已設定有效的 API Key (FAL_KEY 或 REPLICATE_API_TOKEN)。',
+  };
+}
+
+// 圖片轉影片
+export interface ImageToVideoRequest {
+  image: string;
+  prompt?: string;
+  duration?: 3 | 5 | 10;
+  motionStrength?: number; // 0-1
+}
+
+export async function imageToVideo(request: ImageToVideoRequest): Promise<VideoGenerationResult> {
+  console.log('=== imageToVideo 開始 ===');
+
+  // 優先使用 fal.ai 的 Kling 圖生影片
+  if (FAL_KEY && FAL_KEY.length > 10) {
+    try {
+      console.log('使用 fal.ai 圖生影片...');
+
+      const result = await fal.subscribe('fal-ai/kling-video/v2/master/image-to-video', {
+        input: {
+          prompt: request.prompt || 'cinematic motion, smooth camera movement',
+          image_url: request.image,
+          duration: (request.duration === 10 ? '10' : '5') as '5' | '10',
+        },
+        logs: true,
+      });
+
+      const output = result.data as { video?: { url: string } };
+
+      if (output.video?.url) {
+        console.log('fal.ai 圖生影片成功');
+        return {
+          videoUrl: output.video.url,
+          duration: request.duration || 5,
+          status: 'completed',
+        };
+      }
+    } catch (error) {
+      console.error('fal.ai 圖生影片失敗:', error);
+    }
+  }
+
+  // 備用：使用 Replicate SVD
+  return generateVideo({
+    prompt: request.prompt || 'animate this image with smooth motion',
+    model: 'kling-2.1',
+    startFrame: request.image,
+    duration: request.duration,
+  });
+}
+
 // 對話式 AI 設計助手
 export interface AIDesignChatMessage {
   role: 'user' | 'assistant';
