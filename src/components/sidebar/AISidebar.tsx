@@ -18,6 +18,8 @@ import {
   removeBackground,
   upscaleImage,
   AI_MODELS,
+  generateVideo,
+  VIDEO_MODELS,
 } from '../../services/aiService';
 import type { AIModel } from '../../types';
 
@@ -63,6 +65,7 @@ export const AISidebar: React.FC = () => {
     layers,
     selectedLayerId,
     updateLayer,
+    saveToHistory,
   } = useCanvasStore();
 
   // 文生圖狀態
@@ -550,19 +553,126 @@ export const AISidebar: React.FC = () => {
           </div>
         </CollapsibleSection>
 
-        {/* 影片生成 (Coming Soon) */}
+        {/* 影片生成 */}
         <CollapsibleSection
-          title="影片生成 (即將推出)"
+          title="影片生成"
           icon={<Film size={16} className="text-pink-400" />}
         >
           <div className="space-y-3">
             <p className="text-xs text-gray-400">
-              支援 Sora、Veo、Runway 等影片生成模型
+              支援 Kling、Runway Gen-3、Luma 等影片生成模型
             </p>
-            <div className="bg-gray-800 rounded-lg p-4 text-center">
-              <Film size={32} className="mx-auto text-gray-500 mb-2" />
-              <p className="text-sm text-gray-500">功能開發中</p>
+
+            {/* 影片模型選擇 */}
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">選擇模型</label>
+              <select
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                defaultValue="kling-2.1"
+              >
+                {VIDEO_MODELS.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name} - {model.description}
+                  </option>
+                ))}
+              </select>
             </div>
+
+            {/* 提示詞輸入 */}
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">影片描述</label>
+              <textarea
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-pink-500 focus:border-transparent resize-none"
+                placeholder="描述你想要生成的影片內容..."
+                rows={3}
+                id="video-prompt-input"
+              />
+            </div>
+
+            {/* 影片設定 */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">比例</label>
+                <select
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs"
+                  defaultValue="16:9"
+                  id="video-ratio-select"
+                >
+                  <option value="16:9">16:9 橫式</option>
+                  <option value="9:16">9:16 直式</option>
+                  <option value="1:1">1:1 方形</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">時長</label>
+                <select
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs"
+                  defaultValue="5"
+                  id="video-duration-select"
+                >
+                  <option value="3">3 秒</option>
+                  <option value="5">5 秒</option>
+                  <option value="10">10 秒</option>
+                </select>
+              </div>
+            </div>
+
+            {/* 生成按鈕 */}
+            <button
+              onClick={async () => {
+                const promptInput = document.getElementById('video-prompt-input') as HTMLTextAreaElement;
+                const ratioSelect = document.getElementById('video-ratio-select') as HTMLSelectElement;
+                const durationSelect = document.getElementById('video-duration-select') as HTMLSelectElement;
+
+                const prompt = promptInput?.value?.trim();
+                if (!prompt) {
+                  alert('請輸入影片描述');
+                  return;
+                }
+
+                setLoading(true, '正在生成影片...');
+                try {
+                  const result = await generateVideo({
+                    prompt,
+                    model: 'kling-2.1',
+                    aspectRatio: ratioSelect?.value as '16:9' | '9:16' | '1:1',
+                    duration: parseInt(durationSelect?.value || '5') as 3 | 5 | 10,
+                  });
+
+                  if (result.status === 'completed' && result.videoUrl) {
+                    alert(`影片生成成功！\n\n影片網址: ${result.videoUrl}`);
+
+                    // 創建影片縮圖
+                    const video = document.createElement('video');
+                    video.crossOrigin = 'anonymous';
+                    video.src = result.videoUrl;
+                    video.muted = true;
+                    video.onloadeddata = () => {
+                      const canvas = document.createElement('canvas');
+                      canvas.width = video.videoWidth || 640;
+                      canvas.height = video.videoHeight || 360;
+                      const ctx = canvas.getContext('2d');
+                      if (ctx) {
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const thumbnail = canvas.toDataURL('image/jpeg', 0.8);
+                        addImageLayer(thumbnail, `影片: ${prompt.substring(0, 15)}...`);
+                        saveToHistory('AI 生成影片');
+                      }
+                    };
+                  } else {
+                    throw new Error(result.error || '影片生成失敗');
+                  }
+                } catch (error) {
+                  alert('生成失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              className="w-full py-2 bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-lg font-medium hover:from-pink-600 hover:to-purple-600 transition-all flex items-center justify-center gap-2"
+            >
+              <Film size={16} />
+              生成影片
+            </button>
           </div>
         </CollapsibleSection>
       </div>

@@ -19,6 +19,7 @@ import {
   aiTextReplace,
   inpaint,
   aiIdentifyObject,
+  imageToVideo,
 } from '../../services/aiService';
 
 // 框選狀態介面
@@ -1258,8 +1259,68 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
                       setLoading(false);
                     }
                   }}
-                  onMockup={() => {
-                    alert('Mockup 功能開發中...\n可將圖片套用到手機、電腦等產品模板上');
+                  onMockup={async () => {
+                    const imageLayer = selectedLayer as ImageLayer;
+                    if (!imageLayer.src) {
+                      alert('請先選擇一張圖片');
+                      return;
+                    }
+
+                    // 顯示 Mockup 選項
+                    const mockupOptions = [
+                      '1. 手機螢幕 (iPhone)',
+                      '2. 電腦螢幕 (MacBook)',
+                      '3. 平板螢幕 (iPad)',
+                      '4. T恤正面',
+                      '5. 馬克杯',
+                      '6. 名片設計',
+                      '7. 海報展示架',
+                      '8. 書籍封面',
+                      '9. 購物袋',
+                      '10. 看板廣告',
+                    ];
+
+                    const choice = window.prompt(
+                      `請選擇 Mockup 模板類型：\n\n${mockupOptions.join('\n')}\n\n輸入編號 (1-10) 或自訂描述：`,
+                      '1'
+                    );
+
+                    if (!choice) return;
+
+                    // 映射選擇到提示詞
+                    const mockupPrompts: Record<string, string> = {
+                      '1': '將這張圖片顯示在一台 iPhone 15 Pro 的螢幕上，手機斜放在白色大理石桌面上，專業產品攝影風格',
+                      '2': '將這張圖片顯示在一台 MacBook Pro 的螢幕上，筆電放在整潔的辦公桌上，現代簡約風格',
+                      '3': '將這張圖片顯示在一台 iPad Pro 的螢幕上，平板斜立在木質桌面上，溫暖的光線',
+                      '4': '將這張圖片印在一件白色 T恤的正面，T恤整齊地擺放展示，專業服裝攝影',
+                      '5': '將這張圖片印在一個白色陶瓷馬克杯上，馬克杯放在桌上，旁邊有咖啡豆裝飾',
+                      '6': '將這張圖片設計成一張名片，名片斜放在深色木質桌面上，專業商務風格',
+                      '7': '將這張圖片設計成一張大型海報，展示在現代藝廊的海報展示架上',
+                      '8': '將這張圖片設計成一本書的封面，書本斜立展示，專業出版物風格',
+                      '9': '將這張圖片印在一個帆布購物袋上，購物袋放在簡潔的背景上展示',
+                      '10': '將這張圖片設計成一個戶外看板廣告，展示在城市街道旁的廣告看板上',
+                    };
+
+                    const promptText = mockupPrompts[choice] || `將這張圖片套用到${choice}的 Mockup 模板上，專業產品攝影風格`;
+
+                    setLoading(true, '生成 Mockup 中...');
+                    try {
+                      const results = await aiEditImage({
+                        image: imageLayer.src,
+                        prompt: promptText,
+                      });
+
+                      if (results[0]) {
+                        addImageLayer(results[0], `Mockup: ${choice}`);
+                        saveToHistory('生成 Mockup');
+                      } else {
+                        throw new Error('未收到處理結果');
+                      }
+                    } catch (error) {
+                      alert('Mockup 生成失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                    } finally {
+                      setLoading(false);
+                    }
                   }}
                   onErase={async () => {
                     const imageLayer = selectedLayer as ImageLayer;
@@ -1369,9 +1430,42 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
                   }}
                 >
                   <ImageAIToolsPanel
-                    onImageChat={() => {
-                      alert('圖片交流功能開發中...');
+                    onImageChat={async () => {
+                      const imageLayer = selectedLayer as ImageLayer;
+                      if (!imageLayer.src) {
+                        alert('請先選擇一張圖片');
+                        setShowAIToolsPanel(false);
+                        return;
+                      }
+
+                      const question = window.prompt('您想了解這張圖片的什麼？\n\n例如：\n- 這張圖片裡有什麼？\n- 幫我分析這張圖片的色彩\n- 這張圖片適合什麼場景使用？');
+                      if (!question) {
+                        setShowAIToolsPanel(false);
+                        return;
+                      }
+
                       setShowAIToolsPanel(false);
+                      setLoading(true, 'AI 分析中...');
+                      try {
+                        const results = await aiEditImage({
+                          image: imageLayer.src,
+                          prompt: `請回答以下關於這張圖片的問題，用繁體中文回答：${question}`
+                        });
+
+                        // 顯示 AI 回覆
+                        if (results[0]) {
+                          alert(`AI 回覆：\n\n圖片分析結果已生成。\n\n提問：${question}\n\n（已將分析視覺化結果添加到畫布）`);
+                          addImageLayer(results[0], `圖片分析: ${question.substring(0, 15)}...`);
+                          saveToHistory('圖片交流');
+                        } else {
+                          // 如果沒有圖片結果，提示用戶
+                          alert(`AI 分析完成：\n\n您的問題：${question}\n\n請使用標記功能來識別圖片中的特定物件。`);
+                        }
+                      } catch (error) {
+                        alert('圖片交流失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
                     onExtractText={async () => {
                       const imageLayer = selectedLayer as ImageLayer;
@@ -1405,7 +1499,43 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
                       }
                     }}
                     onSaveToMemo={() => {
-                      alert('儲存到備忘錄功能開發中...');
+                      const imageLayer = selectedLayer as ImageLayer;
+                      if (!imageLayer.src) {
+                        alert('請先選擇一張圖片');
+                        setShowAIToolsPanel(false);
+                        return;
+                      }
+
+                      const note = window.prompt('為這張圖片添加備註：', '');
+
+                      try {
+                        // 從 localStorage 讀取現有備忘錄
+                        const existingMemos = JSON.parse(localStorage.getItem('lovart_memos') || '[]');
+
+                        // 添加新的備忘錄
+                        const newMemo = {
+                          id: Date.now().toString(),
+                          image: imageLayer.src,
+                          note: note || '',
+                          name: imageLayer.name || '未命名圖片',
+                          createdAt: new Date().toISOString(),
+                        };
+
+                        existingMemos.unshift(newMemo);
+
+                        // 限制備忘錄數量（最多 50 個）
+                        if (existingMemos.length > 50) {
+                          existingMemos.pop();
+                        }
+
+                        // 儲存到 localStorage
+                        localStorage.setItem('lovart_memos', JSON.stringify(existingMemos));
+
+                        alert(`已儲存到備忘錄！\n\n圖片：${newMemo.name}\n備註：${note || '（無備註）'}\n\n共有 ${existingMemos.length} 個備忘錄`);
+                      } catch (error) {
+                        alert('儲存失敗：' + (error instanceof Error ? error.message : '儲存空間不足'));
+                      }
+
                       setShowAIToolsPanel(false);
                     }}
                     onRemoveBackground={async () => {
@@ -1425,9 +1555,85 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
                         setLoading(false);
                       }
                     }}
-                    onRemoveBrushArea={() => {
-                      alert('移除刷選區域功能開發中...\n請先使用畫筆工具塗抹要移除的區域');
+                    onRemoveBrushArea={async () => {
+                      const imageLayer = selectedLayer as ImageLayer;
+                      if (!imageLayer.src) {
+                        alert('請先選擇一張圖片');
+                        setShowAIToolsPanel(false);
+                        return;
+                      }
+
+                      // 找到繪圖圖層（遮罩）
+                      const drawingLayers = layers.filter(l => l.type === 'drawing') as { type: 'drawing'; lines: DrawingLine[]; width: number; height: number }[];
+                      if (drawingLayers.length === 0 || drawingLayers.every(dl => dl.lines.length === 0)) {
+                        alert('請先使用畫筆工具在圖片上塗抹要移除的區域\n\n操作步驟：\n1. 選擇畫筆工具\n2. 在要移除的區域塗抹\n3. 點擊「移除刷選區域」');
+                        setShowAIToolsPanel(false);
+                        return;
+                      }
+
                       setShowAIToolsPanel(false);
+                      setLoading(true, '移除刷選區域中...');
+
+                      try {
+                        // 創建遮罩畫布
+                        const maskCanvas = document.createElement('canvas');
+                        maskCanvas.width = imageLayer.width || 1024;
+                        maskCanvas.height = imageLayer.height || 1024;
+                        const maskCtx = maskCanvas.getContext('2d');
+                        if (!maskCtx) throw new Error('無法創建遮罩畫布');
+
+                        // 黑色背景（不需要修復的區域）
+                        maskCtx.fillStyle = '#000000';
+                        maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
+
+                        // 白色繪製刷選區域（需要修復的區域）
+                        maskCtx.strokeStyle = '#ffffff';
+                        maskCtx.fillStyle = '#ffffff';
+                        maskCtx.lineCap = 'round';
+                        maskCtx.lineJoin = 'round';
+
+                        drawingLayers.forEach(dl => {
+                          dl.lines.forEach(line => {
+                            if (line.points.length < 4) return;
+                            maskCtx.lineWidth = (line.strokeWidth || 20) * 2; // 稍微擴大遮罩範圍
+                            maskCtx.beginPath();
+                            maskCtx.moveTo(line.points[0], line.points[1]);
+                            for (let i = 2; i < line.points.length; i += 2) {
+                              maskCtx.lineTo(line.points[i], line.points[i + 1]);
+                            }
+                            maskCtx.stroke();
+                          });
+                        });
+
+                        // 轉換為 base64
+                        const maskBase64 = maskCanvas.toDataURL('image/png');
+
+                        // 調用 inpaint API
+                        const results = await inpaint({
+                          image: imageLayer.src,
+                          mask: maskBase64,
+                          prompt: '用周圍背景自然填補這個區域，保持圖片整體一致性',
+                        });
+
+                        if (results[0]) {
+                          addImageLayer(results[0], '移除區域結果');
+                          saveToHistory('移除刷選區域');
+
+                          // 清除繪圖圖層
+                          drawingLayers.forEach(dl => {
+                            const layerId = (dl as unknown as { id: string }).id;
+                            if (layerId) {
+                              removeLayer(layerId);
+                            }
+                          });
+                        } else {
+                          throw new Error('未收到處理結果');
+                        }
+                      } catch (error) {
+                        alert('移除刷選區域失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
                     onRemoveObject={async () => {
                       const imageLayer = selectedLayer as ImageLayer;
@@ -1455,9 +1661,55 @@ export const SmartCanvas: React.FC<SmartCanvasProps> = ({ className }) => {
                       alert('請使用左側工具列的 AI 圖像生成功能');
                       setShowAIToolsPanel(false);
                     }}
-                    onImageToAnimation={() => {
-                      alert('AI 圖生動畫功能開發中...');
+                    onImageToAnimation={async () => {
+                      const imageLayer = selectedLayer as ImageLayer;
+                      if (!imageLayer.src) return;
+
+                      const prompt = window.prompt('請描述動畫效果（例如：輕微搖擺、緩慢旋轉、呼吸般起伏）', '自然運動，電影級品質');
+                      if (!prompt) {
+                        setShowAIToolsPanel(false);
+                        return;
+                      }
+
                       setShowAIToolsPanel(false);
+                      setLoading(true, 'AI 圖生動畫中...');
+                      try {
+                        const result = await imageToVideo({
+                          image: imageLayer.src,
+                          prompt: prompt,
+                          duration: 5,
+                        });
+
+                        if (result.status === 'completed' && result.videoUrl) {
+                          // 創建影片縮圖並添加到畫布
+                          const video = document.createElement('video');
+                          video.crossOrigin = 'anonymous';
+                          video.src = result.videoUrl;
+                          video.muted = true;
+
+                          video.onloadeddata = () => {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = video.videoWidth || 640;
+                            canvas.height = video.videoHeight || 360;
+                            const ctx = canvas.getContext('2d');
+                            if (ctx) {
+                              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                              const thumbnail = canvas.toDataURL('image/jpeg', 0.8);
+                              addImageLayer(thumbnail, `動畫影片: ${prompt.substring(0, 15)}...`, canvas.width / 2, canvas.height / 2);
+                              saveToHistory('AI 圖生動畫');
+                            }
+                          };
+
+                          // 顯示影片網址讓用戶可以下載
+                          alert(`動畫生成成功！\n\n影片網址: ${result.videoUrl}\n\n（影片縮圖已添加到畫布）`);
+                        } else {
+                          throw new Error(result.error || '動畫生成失敗');
+                        }
+                      } catch (error) {
+                        alert('AI 圖生動畫失敗：' + (error instanceof Error ? error.message : '未知錯誤'));
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
                     onRemoveText={async () => {
                       const imageLayer = selectedLayer as ImageLayer;

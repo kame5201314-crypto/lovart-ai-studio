@@ -198,4 +198,26 @@ export async function getUserProfile(userId: string) {
   return null;
 }
 
+// 更新用戶資料
+export async function updateUserProfile(updates: { displayName?: string; photoURL?: string }) {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error("用戶未登入");
+  }
+
+  // 動態導入 updateProfile
+  const { updateProfile } = await import("firebase/auth");
+
+  await updateProfile(user, updates);
+
+  // 同時更新 Firestore 中的用戶資料
+  const userDocRef = doc(db, "users", user.uid);
+  await setDoc(userDocRef, {
+    ...updates,
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+
+  return user;
+}
+
 console.log("✅ Firebase 初始化成功");
