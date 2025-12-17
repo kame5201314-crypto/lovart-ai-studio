@@ -853,6 +853,12 @@ function App() {
               <div className="pointer-events-auto">
                 <ImageGeneratorBlock
                   isGenerating={isLoading}
+                  canvasLayers={layers.filter(l => l.type === 'image').map(l => ({
+                    id: l.id,
+                    type: l.type,
+                    name: l.name,
+                    src: (l as ImageLayer).src,
+                  }))}
                   onGenerate={async (prompt, model, width, height, referenceImage) => {
                     setLoading(true, '正在生成圖片...');
                     try {

@@ -207,7 +207,7 @@ export function ImageGeneratorBlock({ onGenerate, isGenerating = false, canvasLa
                   </button>
                   <button
                     onClick={() => {
-                      // TODO: 從畫布選擇
+                      setShowCanvasSelector(true);
                       setShowUploadDropdown(false);
                     }}
                     className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 transition-colors"
@@ -315,6 +315,56 @@ export function ImageGeneratorBlock({ onGenerate, isGenerating = false, canvasLa
           </div>
         </div>
       </div>
+
+      {/* 畫布圖層選擇器 */}
+      {showCanvasSelector && (
+        <div className="absolute bottom-full left-0 mb-2 w-full max-w-[400px] bg-white rounded-xl shadow-2xl border border-gray-100 p-4 z-50">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-medium text-gray-900">從畫布選擇圖片</h3>
+            <button
+              onClick={() => setShowCanvasSelector(false)}
+              className="p-1 hover:bg-gray-100 rounded-lg text-gray-500"
+            >
+              ✕
+            </button>
+          </div>
+
+          {canvasLayers.filter(l => l.type === 'image' && l.src).length > 0 ? (
+            <div className="grid grid-cols-3 gap-2 max-h-[200px] overflow-y-auto">
+              {canvasLayers
+                .filter(l => l.type === 'image' && l.src)
+                .map(layer => (
+                  <button
+                    key={layer.id}
+                    onClick={() => {
+                      if (layer.src) {
+                        setReferenceImage(layer.src);
+                        setShowCanvasSelector(false);
+                      }
+                    }}
+                    className="relative aspect-square rounded-lg overflow-hidden border-2 border-transparent hover:border-blue-500 transition-colors group"
+                  >
+                    <img
+                      src={layer.src}
+                      alt={layer.name}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-1">
+                      <span className="text-xs text-white truncate block">{layer.name}</span>
+                    </div>
+                  </button>
+                ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-400">
+              <Layers size={32} className="mx-auto mb-2 opacity-50" />
+              <p className="text-sm">畫布中沒有圖片圖層</p>
+              <p className="text-xs mt-1">請先上傳或生成圖片</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

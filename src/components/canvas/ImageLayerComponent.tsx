@@ -10,6 +10,7 @@ interface ImageLayerComponentProps {
   isSelected?: boolean;
   onClick: (e: Konva.KonvaEventObject<MouseEvent>) => void;
   onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => void;
+  onDragMove?: (e: Konva.KonvaEventObject<DragEvent>) => void;
   onTransformEnd: (e: Konva.KonvaEventObject<Event>) => void;
   onContextMenu?: (e: Konva.KonvaEventObject<PointerEvent>) => void;
 }
@@ -19,6 +20,7 @@ export const ImageLayerComponent: React.FC<ImageLayerComponentProps> = ({
   isDraggable,
   onClick,
   onDragEnd,
+  onDragMove,
   onTransformEnd,
   onContextMenu,
 }) => {
@@ -47,6 +49,7 @@ export const ImageLayerComponent: React.FC<ImageLayerComponentProps> = ({
       onClick={onClick}
       onTap={onClick as any}
       onDragEnd={onDragEnd}
+      onDragMove={onDragMove}
       onTransformEnd={onTransformEnd}
       onContextMenu={onContextMenu}
     />
